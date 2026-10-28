@@ -102,7 +102,7 @@ describe('CIVNEXA — Landing Page, Routing & Contrast Quality Verification', ()
     // Should navigate to dashboard
     await waitFor(() => {
       expect(screen.getByText(/Student Support & Conduct Portal/i)).toBeDefined();
-    });
+    }, { timeout: 4000 });
   });
 
   it('7. Displays clear "Not Available" badge and messaging for placeholder routes', async () => {

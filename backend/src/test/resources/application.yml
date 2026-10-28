@@ -1,0 +1,33 @@
+server:
+  port: 0
+  servlet:
+    context-path: /api/v1
+
+spring:
+  application:
+    name: civnexa-backend-test
+
+  datasource:
+    url: jdbc:h2:mem:civnexa_test_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=MySQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+
+civnexa:
+  jwt:
+    secret: civnexa_super_secure_jwt_secret_token_signing_key_at_least_256_bits_long_for_security_2026
+    expiration-ms: 3600000
+  cors:
+    allowed-origins: http://localhost:5173,http://localhost:5174
+    allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
+    allowed-headers: Authorization,Content-Type,X-Requested-With,Accept,Origin
+    allow-credentials: true

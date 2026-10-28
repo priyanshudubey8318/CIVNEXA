@@ -8,6 +8,12 @@ scratch/
 prompt_full.txt
 test-fe1.js
 
+# Backend build artifacts
+target/
+backend/target/
+*.class
+*.jar
+
 # Logs
 logs
 *.log
