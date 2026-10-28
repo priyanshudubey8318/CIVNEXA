@@ -1,0 +1,111 @@
+/* CIVNEXA Design Tokens & Custom CSS Variables */
+:root {
+  /* Brand Foundations */
+  --cx-navy-950: #070D1E;
+  --cx-navy-900: #0B132B;
+  --cx-navy-800: #132043;
+  --cx-navy-700: #1C2D5A;
+  --cx-navy-600: #253A73;
+  --cx-navy-500: #334E96;
+
+  /* Teal & Cyan Brand Accents */
+  --cx-teal-900: #042F2E;
+  --cx-teal-800: #115E59;
+  --cx-teal-700: #0F766E;
+  --cx-teal-600: #0D9488;
+  --cx-teal-500: #14B8A6;
+  --cx-teal-400: #2DD4BF;
+  --cx-teal-100: #CCFBF1;
+  --cx-teal-50:  #F0FDFA;
+
+  /* Sky & Blue secondary */
+  --cx-blue-600: #2563EB;
+  --cx-blue-500: #3B82F6;
+  --cx-blue-100: #DBEAFE;
+  --cx-blue-50:  #EFF6FF;
+
+  /* Neutral Surfaces & Grays */
+  --cx-slate-900: #0F172A;
+  --cx-slate-800: #1E293B;
+  --cx-slate-700: #334155;
+  --cx-slate-600: #475569;
+  --cx-slate-500: #64748B;
+  --cx-slate-400: #94A3B8;
+  --cx-slate-300: #CBD5E1;
+  --cx-slate-200: #E2E8F0;
+  --cx-slate-100: #F1F5F9;
+  --cx-slate-50:  #F8FAFC;
+  --cx-white:     #FFFFFF;
+
+  /* Semantic Palettes */
+  --cx-success: #10B981;
+  --cx-success-bg: #ECFDF5;
+  --cx-success-border: #A7F3D0;
+  --cx-success-text: #065F46;
+
+  --cx-warning: #F59E0B;
+  --cx-warning-bg: #FFFBEB;
+  --cx-warning-border: #FDE68A;
+  --cx-warning-text: #92400E;
+
+  --cx-danger: #EF4444;
+  --cx-danger-bg: #FEF2F2;
+  --cx-danger-border: #FECACA;
+  --cx-danger-text: #991B1B;
+
+  --cx-info: #0284C7;
+  --cx-info-bg: #F0F9FF;
+  --cx-info-border: #BAE6FD;
+  --cx-info-text: #075985;
+
+  --cx-confidential: #8B5CF6;
+  --cx-confidential-bg: #F5F3FF;
+  --cx-confidential-border: #DDD6FE;
+  --cx-confidential-text: #5B21B6;
+
+  /* Layout dimensions */
+  --cx-sidebar-width: 272px;
+  --cx-sidebar-collapsed-width: 76px;
+  --cx-topbar-height: 68px;
+  --cx-border-radius-sm: 6px;
+  --cx-border-radius-md: 10px;
+  --cx-border-radius-lg: 14px;
+  --cx-border-radius-xl: 20px;
+
+  /* Elevation Shadows */
+  --cx-shadow-xs: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  --cx-shadow-sm: 0 1px 3px 0 rgba(15, 23, 42, 0.08), 0 1px 2px -1px rgba(15, 23, 42, 0.08);
+  --cx-shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.07);
+  --cx-shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.05);
+  --cx-shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.1), 0 8px 10px -6px rgba(15, 23, 42, 0.05);
+  --cx-shadow-2xl: 0 25px 50px -12px rgba(15, 23, 42, 0.14);
+  --cx-shadow-3d: 0 30px 60px -15px rgba(11, 19, 43, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.06);
+
+  /* Glassmorphism & Depth Tokens */
+  --cx-perspective: 1200px;
+  --cx-glass-bg: rgba(255, 255, 255, 0.88);
+  --cx-glass-border: rgba(255, 255, 255, 0.6);
+  --cx-glass-dark-bg: rgba(11, 19, 43, 0.85);
+  --cx-glass-dark-border: rgba(255, 255, 255, 0.1);
+
+  /* Typography */
+  --cx-font-heading: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --cx-font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --cx-font-mono: 'JetBrains Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Transitions */
+  --cx-transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --cx-transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --cx-transition-smooth: 350ms cubic-bezier(0.16, 1, 0.3, 1);
+  --cx-transition-spring: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
