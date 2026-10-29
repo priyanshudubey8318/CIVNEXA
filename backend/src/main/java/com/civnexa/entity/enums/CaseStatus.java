@@ -1,0 +1,17 @@
+package com.civnexa.entity.enums;
+
+public enum CaseStatus {
+    SUBMITTED,
+    PENDING_VERIFICATION,
+    VERIFIED,
+    ASSIGNED,
+    UNDER_INVESTIGATION,
+    AWAITING_RESPONSE,
+    HEARING_SCHEDULED,
+    DECISION_PENDING,
+    RESOLVED,
+    CLOSED,
+    RETURNED_FOR_INFORMATION,
+    REJECTED,
+    ESCALATED
+}
