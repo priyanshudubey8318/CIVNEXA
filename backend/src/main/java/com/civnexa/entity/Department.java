@@ -49,6 +49,10 @@ public class Department {
     public Department() {
     }
 
+    public Department(String code, String name) {
+        this(code, name, null, null, null);
+    }
+
     public Department(String code, String name, String hodName, String contactEmail, String description) {
         this.code = code;
         this.name = name;
