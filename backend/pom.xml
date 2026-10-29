@@ -51,6 +51,20 @@
 			<scope>runtime</scope>
 		</dependency>
 
+		<!-- Flyway Starter & Database Migrations -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-flyway</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-mysql</artifactId>
+		</dependency>
+
 		<!-- JWT Authentication (JJWT) -->
 		<dependency>
 			<groupId>io.jsonwebtoken</groupId>
