@@ -66,7 +66,7 @@ public class User {
     private String avatar;
 
     @Column(name = "status", nullable = false, length = 20)
-    private String status = "ACTIVE";
+    private String status = "PENDING_VERIFICATION";
 
     @Size(max = 30)
     @Column(name = "roll_number", length = 30)
@@ -110,7 +110,7 @@ public class User {
         this.email = email;
         this.passwordHash = passwordHash;
         this.role = role;
-        this.status = "ACTIVE";
+        this.status = "PENDING_VERIFICATION";
         this.createdAt = Instant.now();
         this.updatedAt = Instant.now();
     }
@@ -119,7 +119,7 @@ public class User {
     public void onPrePersist() {
         if (createdAt == null) createdAt = Instant.now();
         if (updatedAt == null) updatedAt = Instant.now();
-        if (status == null) status = "ACTIVE";
+        if (status == null) status = "PENDING_VERIFICATION";
     }
 
     @PreUpdate
