@@ -1,6 +1,7 @@
 // Case management service with dynamic statistics, interactive workflows, and audit logging
 // Phase FE-3: Verification Queue, Incident Creation, Grievance Submission, Investigation & Hearings
 import { runStorageMigration } from './storageMigration.js';
+import { apiClient, getAuthToken } from './apiClient.js';
 
 // Run targeted migration to clear old demo fixtures from storage
 runStorageMigration();
@@ -68,6 +69,45 @@ export const caseService = {
     sortOrder = 'desc',
   } = {}) => {
     await new Promise((r) => setTimeout(r, 40));
+
+    if (getAuthToken()) {
+      try {
+        const response = await apiClient.get('/cases?size=100');
+        const pageData = response?.data?.content || response?.content || response?.data || response;
+        if (Array.isArray(pageData) && pageData.length > 0) {
+          const remoteList = pageData.map((c) => ({
+            ...c,
+            id: c.caseNumber || String(c.id),
+            numericId: c.id,
+            caseNumber: c.caseNumber,
+            categoryLabel: c.category,
+            statusLabel: c.status,
+            severity: c.priority,
+            summary: c.description,
+            student: c.student ? {
+              id: c.student.id,
+              name: `${c.student.firstName || ''} ${c.student.lastName || ''}`.trim() || c.student.email,
+              email: c.student.email,
+              rollNo: c.student.institutionalId || '',
+              department: c.student.department || '',
+            } : null,
+            assignedTo: c.assignedTo ? {
+              id: c.assignedTo.id,
+              name: `${c.assignedTo.firstName || ''} ${c.assignedTo.lastName || ''}`.trim() || c.assignedTo.email,
+              role: c.assignedTo.role,
+            } : null,
+            activityTimeline: c.activities || [],
+            investigationNotes: c.investigationNotes || [],
+            responses: c.studentResponses || [],
+          }));
+          const remoteIds = new Set(remoteList.map((r) => r.caseNumber));
+          const localOnly = currentCases.filter((c) => !remoteIds.has(c.caseNumber) && !remoteIds.has(c.id));
+          currentCases = [...remoteList, ...localOnly];
+        }
+      } catch (e) {
+        // graceful offline fallback
+      }
+    }
 
     let filtered = [...currentCases];
 
@@ -442,6 +482,30 @@ export const caseService = {
       ],
     };
 
+    if (getAuthToken()) {
+      try {
+        const backendResp = await apiClient.post('/cases', {
+          title: title.trim(),
+          description: description.trim(),
+          category: categoryKey || category || 'GENERAL_MISCONDUCT',
+          priority: priority || 'MEDIUM',
+          incidentDate: incidentDate || new Date().toISOString().split('T')[0],
+          location: location || 'Campus Main Ground',
+          confidential: Boolean(confidential),
+          studentInstitutionalId: student?.rollNo || student?.institutionalId || '22CSE041',
+          departmentName: student?.department || department || 'Computer Science & Engineering',
+        });
+        const saved = backendResp?.data || backendResp;
+        if (saved?.id) {
+          newCase.numericId = saved.id;
+          newCase.caseNumber = saved.caseNumber || newCase.caseNumber;
+          newCase.id = saved.caseNumber || newCase.id;
+        }
+      } catch (e) {
+        console.warn('Backend case creation failed, fallback to local', e);
+      }
+    }
+
     currentCases.unshift(newCase);
     saveCases(currentCases);
     return newCase;
@@ -589,6 +653,30 @@ export const caseService = {
         },
       ],
     };
+
+    if (getAuthToken()) {
+      try {
+        const backendResp = await apiClient.post('/cases', {
+          title: subject.trim(),
+          description: description.trim(),
+          category: categoryKey || category || 'FACILITIES_INFRASTRUCTURE',
+          priority: priority || 'MEDIUM',
+          incidentDate: incidentDate || new Date().toISOString().split('T')[0],
+          location: location || 'Campus Facilities',
+          confidential: Boolean(isAnonymous),
+          studentInstitutionalId: currentUser?.institutionalId || currentUser?.rollNo || '22CSE041',
+          departmentName: currentUser?.department || department || 'Computer Science & Engineering',
+        });
+        const saved = backendResp?.data || backendResp;
+        if (saved?.id) {
+          newGrievance.numericId = saved.id;
+          newGrievance.caseNumber = saved.caseNumber || newGrievance.caseNumber;
+          newGrievance.id = saved.caseNumber || newGrievance.id;
+        }
+      } catch (e) {
+        console.warn('Backend grievance creation failed, fallback to local', e);
+      }
+    }
 
     currentCases.unshift(newGrievance);
     saveCases(currentCases);

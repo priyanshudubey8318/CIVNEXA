@@ -57,8 +57,12 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Public system health checks
                         .requestMatchers("/health", "/health/**", "/ping", "/api/v1/health", "/api/v1/health/**", "/api/v1/ping").permitAll()
-                        // Public authentication endpoints (login and register only; /auth/me requires authentication)
-                        .requestMatchers("/auth/login", "/auth/register", "/api/v1/auth/login", "/api/v1/auth/register").permitAll()
+                        // Public authentication endpoints (login, register, email verification, resend verification)
+                        .requestMatchers(
+                                "/auth/login", "/auth/register", "/auth/verify-email", "/auth/resend-verification",
+                                "/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/verify-email", "/api/v1/auth/resend-verification",
+                                "/departments", "/api/v1/departments"
+                        ).permitAll()
                         // OpenAPI / Swagger documentation
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         // All other endpoints require authentication
@@ -77,5 +81,10 @@ public class SecurityConfig {
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) throws Exception {
         return configuration.getAuthenticationManager();
+    }
+
+    @Bean
+    public com.fasterxml.jackson.databind.ObjectMapper objectMapper() {
+        return new com.fasterxml.jackson.databind.ObjectMapper();
     }
 }

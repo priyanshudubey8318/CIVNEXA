@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ShieldCheck, UserPlus, AlertCircle, Info, ArrowLeft, Building2 } from 'lucide-react';
@@ -15,12 +15,32 @@ export const RegisterPage = () => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [department, setDepartment] = useState('Computer Science & Engineering');
+  const [departmentsList, setDepartmentsList] = useState([
+    { id: 1, name: 'Computer Science & Engineering', code: 'CSE' },
+    { id: 2, name: 'Mechanical Engineering', code: 'ME' },
+    { id: 3, name: 'Electrical & Electronics Engineering', code: 'EEE' },
+    { id: 4, name: 'Civil Engineering', code: 'CE' },
+    { id: 5, name: 'Management Studies', code: 'MBA' },
+  ]);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [policyNotice, setPolicyNotice] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+    authService.getDepartments().then((depts) => {
+      if (isMounted && Array.isArray(depts) && depts.length > 0) {
+        setDepartmentsList(depts);
+        if (!depts.some((d) => d.name === department)) {
+          setDepartment(depts[0].name);
+        }
+      }
+    }).catch(() => {});
+    return () => { isMounted = false; };
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -49,10 +69,10 @@ export const RegisterPage = () => {
       });
 
       toast.success(
-        `Account registration submitted with status: ${result.status}. Awaiting institutional verification.`,
-        'Registration Received'
+        `Registration recorded (${result.status || 'PENDING_VERIFICATION'}). Please verify your institutional email with the 6-digit code.`,
+        'Verification Code Sent'
       );
-      navigate('/login');
+      navigate(`/verify-email?email=${encodeURIComponent(email.trim())}`);
     } catch (err) {
       if (err.message && err.message.includes('disabled by institutional policy')) {
         setPolicyNotice(err.message);
@@ -170,16 +190,22 @@ export const RegisterPage = () => {
 
         <div className="mb-3">
           <label htmlFor="reg-department" className="cx-form-label">
-            Department
+            Academic Department <span className="text-danger">*</span>
           </label>
-          <input
+          <select
             id="reg-department"
-            type="text"
             value={department}
             onChange={(e) => setDepartment(e.target.value)}
             className="cx-input"
             disabled={isLoading}
-          />
+            required
+          >
+            {departmentsList.map((d) => (
+              <option key={d.id || d.code} value={d.name}>
+                {d.name} ({d.code})
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="row g-2 mb-4">

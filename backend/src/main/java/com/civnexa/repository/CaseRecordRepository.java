@@ -39,5 +39,9 @@ public interface CaseRecordRepository extends JpaRepository<CaseRecord, Long> {
 
     long countByCaseType(CaseType caseType);
 
+    long countByPriority(com.civnexa.entity.enums.Priority priority);
+
+    long countByStatusIn(List<CaseStatus> statuses);
+
     boolean existsByCaseNumber(String caseNumber);
 }

@@ -5,6 +5,8 @@ import AuthLayout from '../layouts/AuthLayout';
 import LandingPage from '../pages/LandingPage';
 import LoginPage from '../pages/auth/LoginPage';
 import RegisterPage from '../pages/auth/RegisterPage';
+import VerifyEmailPage from '../pages/auth/VerifyEmailPage';
+import PendingApprovalPage from '../pages/auth/PendingApprovalPage';
 import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from '../pages/auth/ResetPasswordPage';
 import OverviewDemoPage from '../pages/OverviewDemoPage';
@@ -62,6 +64,8 @@ export const AppRoutes = () => {
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/pending-approval" element={<PendingApprovalPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
         </Route>

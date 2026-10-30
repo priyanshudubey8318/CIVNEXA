@@ -35,4 +35,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByUserReference(String userReference);
 
     boolean existsByRollNumber(String rollNumber);
+
+    boolean existsByRole(RoleType role);
+
+    List<User> findByStatusIn(List<String> statuses);
+
+    Page<User> findByStatus(String status, Pageable pageable);
+
+    Page<User> findByStatusIn(List<String> statuses, Pageable pageable);
 }

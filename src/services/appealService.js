@@ -4,6 +4,7 @@
 
 import { APPEAL_GROUNDS, APPEAL_STATUSES } from '../constants/appealConfig';
 import caseService from './caseService';
+import { apiClient, getAuthToken } from './apiClient.js';
 
 const STORAGE_KEY = 'civnexa_appeals_store';
 
@@ -271,6 +272,24 @@ class AppealService {
         },
       ],
     };
+
+    if (getAuthToken()) {
+      try {
+        const resp = await apiClient.post('/appeals', {
+          caseId: Number(caseId) || 1,
+          grounds: groundsSummary,
+          explanation: explanation.trim(),
+          reliefSought: reliefSought || 'Reconsideration of sanction',
+        });
+        const saved = resp?.data || resp;
+        if (saved?.id) {
+          newAppeal.numericId = saved.id;
+          newAppeal.appealNumber = saved.appealNumber || newAppeal.appealNumber;
+        }
+      } catch (e) {
+        console.warn('Backend appeal submission skipped', e);
+      }
+    }
 
     items.unshift(newAppeal);
     this._saveAppeals(items);

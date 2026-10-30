@@ -1,5 +1,6 @@
 // Evidence Vault & Chain of Custody Service for CIVNEXA Phase FE-4
 // Manages evidence inspection, status updates, Web Crypto SHA-256 verification, and audit logging.
+import { apiClient, getAuthToken } from './apiClient.js';
 
 const STORAGE_KEY = 'civnexa_evidence_vault';
 
@@ -275,6 +276,34 @@ export const evidenceService = {
     currentEvidence = JSON.parse(JSON.stringify(fixtures || []));
     saveEvidence(currentEvidence);
     return currentEvidence;
+  },
+
+  uploadEvidenceFile: async ({ caseId, file }) => {
+    if (!file) throw new Error('File is required.');
+    const formData = new FormData();
+    formData.append('caseId', caseId);
+    formData.append('file', file);
+    if (getAuthToken()) {
+      const response = await apiClient.post('/evidence/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data || response;
+    }
+    return {
+      id: `EV-${Date.now()}`,
+      fileName: file.name,
+      fileSize: file.size,
+      checksumSha256: 'mock-sha256',
+    };
+  },
+
+  fetchCustodyLogs: async (evidenceId) => {
+    if (getAuthToken()) {
+      const response = await apiClient.get(`/evidence/${evidenceId}/custody-logs`);
+      return response.data || response || [];
+    }
+    const item = await evidenceService.getEvidenceById(evidenceId);
+    return item?.custodyChain || [];
   },
 };
 

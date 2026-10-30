@@ -14,6 +14,10 @@ import {
   CheckCircle2,
   AlertTriangle,
   Info,
+  Upload,
+  FileSpreadsheet,
+  FileText,
+  X,
 } from 'lucide-react';
 import AnimatedPage from '../../components/common/AnimatedPage';
 import PageHeader from '../../components/common/PageHeader';
@@ -36,6 +40,10 @@ export const UserManagementPage = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
 
   // Form states
   const [formName, setFormName] = useState('');
@@ -112,6 +120,26 @@ export const UserManagementPage = () => {
     }
   };
 
+  const handleImportSubmit = async (e) => {
+    e.preventDefault();
+    if (!importFile) {
+      toast.error('Please select an Excel (.xlsx), CSV, or JSON file to import.');
+      return;
+    }
+    setIsImporting(true);
+    setImportResult(null);
+    try {
+      const result = await adminService.importUsersFile(importFile);
+      setImportResult(result);
+      toast.success(`Import complete: ${result.successfulRows} users imported successfully.`);
+      loadUsers();
+    } catch (err) {
+      toast.error(err.message || 'Bulk import failed. Please verify the file structure.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const openEditModal = (u) => {
     setEditingUser(u);
     setFormName(u.name);
@@ -135,6 +163,19 @@ export const UserManagementPage = () => {
           </span>
         }
         actions={
+          <div className="d-flex align-items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setImportFile(null);
+                setImportResult(null);
+                setIsImportModalOpen(true);
+              }}
+              className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1.5"
+            >
+              <Upload size={14} />
+              <span>Bulk Import</span>
+            </button>
           <button
             type="button"
             onClick={() => {
@@ -149,7 +190,8 @@ export const UserManagementPage = () => {
             <UserPlus size={15} />
             <span>Create User</span>
           </button>
-        }
+        </div>
+      }
       />
 
       {/* Filter and Search Bar */}
@@ -440,6 +482,175 @@ export const UserManagementPage = () => {
                   <button type="submit" className="btn btn-teal btn-sm">
                     {isCreateModalOpen ? 'Create User' : 'Save Changes'}
                   </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Bulk Import Modal */}
+      {isImportModalOpen && (
+        <div
+          className="modal show d-block"
+          style={{ backgroundColor: 'rgba(15, 23, 42, 0.65)' }}
+          tabIndex="-1"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div className="modal-content shadow-lg border-0">
+              <div className="modal-header border-bottom py-3 px-4">
+                <div className="d-flex align-items-center gap-2">
+                  <div className="p-2 bg-primary bg-opacity-10 text-primary rounded-3">
+                    <FileSpreadsheet size={20} />
+                  </div>
+                  <div>
+                    <h5 className="modal-title fw-bold text-dark mb-0 fs-6">
+                      Bulk Institutional User Import
+                    </h5>
+                    <p className="text-muted small mb-0" style={{ fontSize: '0.78rem' }}>
+                      Upload user roster in Excel (.xlsx), CSV (.csv), or JSON (.json) format
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setIsImportModalOpen(false)}
+                  aria-label="Close"
+                />
+              </div>
+
+              <form onSubmit={handleImportSubmit}>
+                <div className="modal-body p-4">
+                  {!importResult ? (
+                    <>
+                      <div className="alert alert-info p-3 small mb-3 rounded-3 d-flex align-items-start gap-2">
+                        <Info size={16} className="mt-0.5 flex-shrink-0 text-primary" />
+                        <div>
+                          <strong>Supported Formats & Columns:</strong> File must contain columns: <code>email</code>, <code>role</code> (SUPER_ADMIN, DEAN, HOD, FACULTY, STAFF, COORDINATOR, COMMITTEE_MEMBER, STUDENT), <code>first_name</code>, <code>last_name</code>, <code>department</code>, <code>institutional_id</code>.
+                        </div>
+                      </div>
+
+                      <div className="mb-3">
+                        <label className="cx-form-label fw-bold">Select Roster File</label>
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls,.csv,.json"
+                          className="form-control"
+                          onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                          disabled={isImporting}
+                          required
+                        />
+                        <div className="form-text small text-muted">
+                          Maximum file size: 10 MB. Server computes and logs SHA-256 checksum for audit compliance.
+                        </div>
+                      </div>
+
+                      {importFile && (
+                        <div className="p-3 bg-light rounded-3 border d-flex align-items-center justify-content-between">
+                          <div className="d-flex align-items-center gap-2">
+                            <FileText size={18} className="text-primary" />
+                            <div>
+                              <div className="small fw-bold text-dark">{importFile.name}</div>
+                              <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+                                {(importFile.size / 1024).toFixed(1)} KB &bull; {importFile.type || 'Institutional Data File'}
+                              </div>
+                            </div>
+                          </div>
+                          <span className="badge bg-success bg-opacity-10 text-success border border-success">Ready</span>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="py-2">
+                      <div className="d-flex align-items-center gap-2 mb-3">
+                        <CheckCircle2 size={24} className="text-success" />
+                        <h6 className="fw-bold mb-0 text-dark">Bulk Import Processed Successfully</h6>
+                      </div>
+
+                      <div className="row g-2 mb-3">
+                        <div className="col-4">
+                          <div className="p-3 bg-light rounded-3 text-center border">
+                            <div className="text-muted small">Total Rows</div>
+                            <div className="h5 fw-bold mb-0 text-dark">{importResult.totalRows}</div>
+                          </div>
+                        </div>
+                        <div className="col-4">
+                          <div className="p-3 bg-success bg-opacity-10 rounded-3 text-center border border-success">
+                            <div className="text-success small fw-semibold">Imported</div>
+                            <div className="h5 fw-bold mb-0 text-success">{importResult.successfulRows}</div>
+                          </div>
+                        </div>
+                        <div className="col-4">
+                          <div className="p-3 bg-danger bg-opacity-10 rounded-3 text-center border border-danger">
+                            <div className="text-danger small fw-semibold">Failed</div>
+                            <div className="h5 fw-bold mb-0 text-danger">{importResult.failedRows}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {importResult.checksumSha256 && (
+                        <div className="p-2.5 bg-light rounded-3 border mb-3">
+                          <div className="small text-muted mb-1">Audit SHA-256 Checksum:</div>
+                          <code className="small text-break" style={{ fontSize: '0.75rem' }}>
+                            {importResult.checksumSha256}
+                          </code>
+                        </div>
+                      )}
+
+                      {importResult.errors && importResult.errors.length > 0 && (
+                        <div className="border rounded-3 p-3 bg-light">
+                          <div className="small fw-bold text-danger mb-2">Row Failures ({importResult.errors.length}):</div>
+                          <ul className="small text-danger mb-0 ps-3">
+                            {importResult.errors.map((err, idx) => (
+                              <li key={idx} className="mb-1">{err}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="modal-footer border-top py-2 px-4">
+                  {!importResult ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setIsImportModalOpen(false)}
+                        disabled={isImporting}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="cx-btn cx-btn-teal btn-sm"
+                        disabled={isImporting || !importFile}
+                      >
+                        {isImporting ? (
+                          <>
+                            <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+                            <span>Processing Import...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload size={14} />
+                            <span>Upload & Import</span>
+                          </>
+                        )}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="cx-btn cx-btn-teal btn-sm"
+                      onClick={() => setIsImportModalOpen(false)}
+                    >
+                      Done
+                    </button>
+                  )}
                 </div>
               </form>
             </div>

@@ -2,6 +2,7 @@
 // Manages counseling referrals, sessions, attendance recording, and welfare follow-ups.
 
 import caseService from './caseService';
+import { apiClient, getAuthToken } from './apiClient.js';
 
 const STORAGE_KEY = 'civnexa_counseling_referrals_store';
 
@@ -154,6 +155,24 @@ export const counselingService = {
       sessions: [],
       followups: [],
     };
+
+    if (getAuthToken()) {
+      try {
+        const resp = await apiClient.post('/counseling/referrals', {
+          caseId: Number(caseId) || 1,
+          studentId: Number(studentId) || 1,
+          reason: reason.trim(),
+          priority: priority,
+        });
+        const saved = resp?.data || resp;
+        if (saved?.id) {
+          newReferral.numericId = saved.id;
+          newReferral.referralNumber = saved.referralNumber || newReferral.id;
+        }
+      } catch (e) {
+        console.warn('Backend counseling referral skipped', e);
+      }
+    }
 
     items.push(newReferral);
     saveReferrals(items);

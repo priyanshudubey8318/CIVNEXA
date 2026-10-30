@@ -24,13 +24,24 @@ spring:
       ddl-auto: validate
     show-sql: false
 
+  mail:
+    host: localhost
+    port: 1025
+
 civnexa:
   jwt:
     secret: civnexa_test_isolated_secret_key_at_least_256_bits_long_for_test_environment_2026
     expiration-ms: 900000
     issuer: CIVNEXA
   auth:
-    public-registration-enabled: false
+    public-registration-enabled: true
+  bootstrap:
+    admin:
+      email: ""
+      password: ""
+  mail:
+    enabled: false
+    from: no-reply@civnexa.edu
   security:
     rate-limit:
       login:

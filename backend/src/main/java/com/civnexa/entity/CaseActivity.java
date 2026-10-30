@@ -58,6 +58,10 @@ public class CaseActivity {
     public CaseActivity() {
     }
 
+    public CaseActivity(CaseRecord caseRecord, String action, User actor, String actorName, String actorRole, String details) {
+        this(caseRecord, action, actor, actorName, actorRole, null, null, details);
+    }
+
     public CaseActivity(CaseRecord caseRecord, String action, User actor, String actorName, String actorRole, String previousStatus, String newStatus, String details) {
         this.caseRecord = caseRecord;
         this.action = action;
@@ -140,6 +144,10 @@ public class CaseActivity {
     }
 
     public String getDetails() {
+        return details;
+    }
+
+    public String getDescription() {
         return details;
     }
 

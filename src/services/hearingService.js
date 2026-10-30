@@ -2,6 +2,7 @@
 // Manages hearings, scheduling conflict detection, summons notices, minutes drafts, and outcomes.
 
 import caseService from './caseService';
+import { apiClient, getAuthToken } from './apiClient.js';
 
 const STORAGE_KEY = 'civnexa_hearings_store';
 
@@ -273,6 +274,25 @@ export const hearingService = {
       minutes: null,
       outcome: null,
     };
+
+    if (getAuthToken()) {
+      try {
+        const resp = await apiClient.post('/hearings', {
+          caseId: Number(caseId) || 1,
+          hearingDate: `${date}T${time}:00`,
+          venue: venue,
+          hearingMode: mode.toUpperCase().replace('-', '_'),
+          instructions: remarks,
+        });
+        const saved = resp?.data || resp;
+        if (saved?.id) {
+          newHearing.numericId = saved.id;
+          newHearing.hearingNumber = saved.hearingNumber || newHearing.hearingNumber;
+        }
+      } catch (e) {
+        console.warn('Backend hearing scheduling skipped', e);
+      }
+    }
 
     items.push(newHearing);
     saveHearings(items);

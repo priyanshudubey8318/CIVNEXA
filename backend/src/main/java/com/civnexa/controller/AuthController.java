@@ -4,7 +4,9 @@ import com.civnexa.dto.ApiResponse;
 import com.civnexa.dto.AuthResponse;
 import com.civnexa.dto.LoginRequest;
 import com.civnexa.dto.RegisterRequest;
+import com.civnexa.dto.ResendVerificationRequest;
 import com.civnexa.dto.UserResponse;
+import com.civnexa.dto.VerifyEmailRequest;
 import com.civnexa.entity.User;
 import com.civnexa.exception.ApiException;
 import com.civnexa.repository.UserRepository;
@@ -29,7 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Controller exposing REST endpoints for CIVNEXA authentication and user identity.
- * Handles user login with JWT issuance, configurable student self-registration, and profile retrieval.
+ * Handles user login with JWT issuance, student self-registration, OTP verification, and profile retrieval.
  */
 @RestController
 @RequestMapping({"/auth", "/api/v1/auth"})
@@ -42,7 +44,7 @@ public class AuthController {
     private final UserRepository userRepository;
     private final LoginRateLimiter loginRateLimiter;
 
-    @Value("${civnexa.auth.public-registration-enabled:false}")
+    @Value("${civnexa.auth.public-registration-enabled:true}")
     private boolean publicRegistrationEnabled;
 
     public AuthController(AuthService authService,
@@ -87,8 +89,7 @@ public class AuthController {
 
     /**
      * Handles student self-registration.
-     * Public registration is disabled by default until institutional identity verification rollout.
-     * When enabled, creates a student account in PENDING_VERIFICATION status without issuing access tokens.
+     * When enabled, creates a student account in PENDING_VERIFICATION status and dispatches an OTP challenge.
      *
      * @param request Student registration payload
      * @return UserResponse of newly registered student (status PENDING_VERIFICATION)
@@ -103,7 +104,32 @@ public class AuthController {
 
         UserResponse userResponse = authService.registerStudent(request);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok(userResponse, "Student registration submitted successfully. Account pending institutional verification."));
+                .body(ApiResponse.ok(userResponse, "Student registration submitted successfully. Please verify your email with the 6-digit code."));
+    }
+
+    /**
+     * Verifies the student's email with a 6-digit OTP code.
+     * Transitions account to PENDING_APPROVAL on success.
+     *
+     * @param request Email and 6-digit OTP
+     * @return UserResponse in PENDING_APPROVAL status
+     */
+    @PostMapping("/verify-email")
+    public ResponseEntity<ApiResponse<UserResponse>> verifyEmail(@Valid @RequestBody VerifyEmailRequest request) {
+        UserResponse userResponse = authService.verifyEmail(request);
+        return ResponseEntity.ok(ApiResponse.ok(userResponse, "Email verified successfully. Your account is now pending institutional review."));
+    }
+
+    /**
+     * Resends a fresh 6-digit verification code to the student's email.
+     *
+     * @param request Email payload
+     * @return Confirmation message
+     */
+    @PostMapping("/resend-verification")
+    public ResponseEntity<ApiResponse<Void>> resendVerification(@Valid @RequestBody ResendVerificationRequest request) {
+        authService.resendVerification(request);
+        return ResponseEntity.ok(ApiResponse.ok(null, "A new verification code has been dispatched to your email address."));
     }
 
     /**

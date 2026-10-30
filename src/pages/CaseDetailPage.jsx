@@ -39,7 +39,7 @@ import { FileUploader } from '../components/forms/FileUploader';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import caseService from '../services/caseService';
-import { MOCK_USERS } from '../constants/demoUsers';
+import adminService from '../services/adminService';
 
 export const CaseDetailPage = () => {
   const { caseId } = useParams();
@@ -170,7 +170,8 @@ export const CaseDetailPage = () => {
 
   // Case Assignment Handler
   const handleAssignSubmit = async () => {
-    const selectedUser = MOCK_USERS.find((u) => u.id === selectedAssigneeId);
+    const assignees = adminService.getUsers().filter((u) => u.role !== 'STUDENT');
+    const selectedUser = assignees.find((u) => u.id === selectedAssigneeId);
     if (!selectedUser) {
       toast.error('Please choose a valid authority to assign.');
       return;
@@ -1081,9 +1082,9 @@ export const CaseDetailPage = () => {
             onChange={(e) => setSelectedAssigneeId(e.target.value)}
           >
             <option value="">-- Choose Reviewer --</option>
-            {MOCK_USERS.filter((u) => u.role !== 'STUDENT').map((user) => (
+            {adminService.getUsers().filter((u) => u.role !== 'STUDENT').map((user) => (
               <option key={user.id} value={user.id}>
-                {user.name} ({user.roleLabel} • {user.department})
+                {user.name} ({user.roleLabel || user.role} • {user.department})
               </option>
             ))}
           </select>

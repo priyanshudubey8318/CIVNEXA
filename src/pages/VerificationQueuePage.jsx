@@ -27,7 +27,7 @@ import Modal from '../components/feedback/Modal';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import caseService from '../services/caseService';
-import { MOCK_USERS } from '../constants/demoUsers';
+import adminService from '../services/adminService';
 
 export const VerificationQueuePage = () => {
   const navigate = useNavigate();
@@ -69,7 +69,8 @@ export const VerificationQueuePage = () => {
 
     try {
       if (actionType === 'ASSIGN') {
-        const targetUser = MOCK_USERS.find((u) => u.id === assigneeId);
+        const assignees = adminService.getUsers().filter((u) => u.role !== 'STUDENT');
+        const targetUser = assignees.find((u) => u.id === assigneeId);
         if (!targetUser) {
           toast.error('Please pick a reviewer to assign.');
           return;
@@ -434,9 +435,9 @@ export const VerificationQueuePage = () => {
                 onChange={(e) => setAssigneeId(e.target.value)}
               >
                 <option value="">-- Choose Reviewer / Proctorial Officer --</option>
-                {MOCK_USERS.filter((u) => u.role !== 'STUDENT').map((u) => (
+                {adminService.getUsers().filter((u) => u.role !== 'STUDENT').map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.name} ({u.roleLabel} • {u.department})
+                    {u.name} ({u.roleLabel || u.role} • {u.department})
                   </option>
                 ))}
               </select>

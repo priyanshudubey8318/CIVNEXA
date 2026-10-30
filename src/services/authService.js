@@ -120,6 +120,83 @@ export const authService = {
   },
 
   /**
+   * Verify institutional email with 6-digit OTP
+   * @param {Object} param0 - { email, otp }
+   * @returns {Promise<Object>}
+   */
+  verifyEmail: async ({ email, otp }) => {
+    if (!email || !email.trim()) {
+      throw new Error('Institutional email is required.');
+    }
+    if (!otp || !otp.trim()) {
+      throw new Error('Verification code is required.');
+    }
+    try {
+      const response = await apiClient.post('/auth/verify-email', {
+        email: email.trim(),
+        otp: otp.trim(),
+      });
+      return {
+        success: true,
+        message: response.message || 'Email verified successfully.',
+      };
+    } catch (error) {
+      if (error.status === 400) {
+        throw new Error(error.message || 'Invalid or expired verification code.');
+      }
+      if (error.status === 429) {
+        throw new Error('Too many verification attempts. Please wait or request a new code.');
+      }
+      throw new Error(error.message || 'Verification failed. Please try again.');
+    }
+  },
+
+  /**
+   * Resend 6-digit verification code with 60s cooldown enforcement
+   * @param {Object} param0 - { email }
+   * @returns {Promise<Object>}
+   */
+  resendVerification: async ({ email }) => {
+    if (!email || !email.trim()) {
+      throw new Error('Institutional email is required.');
+    }
+    try {
+      const response = await apiClient.post('/auth/resend-verification', {
+        email: email.trim(),
+      });
+      return {
+        success: true,
+        message: response.message || 'Fresh verification code dispatched.',
+      };
+    } catch (error) {
+      if (error.status === 429) {
+        throw new Error('Please wait at least 60 seconds before requesting another code.');
+      }
+      throw new Error(error.message || 'Failed to resend verification code.');
+    }
+  },
+
+  /**
+   * Retrieve active academic departments
+   * @returns {Promise<Array>}
+   */
+  getDepartments: async () => {
+    try {
+      const response = await apiClient.get('/departments');
+      return response.data || response || [];
+    } catch (error) {
+      console.warn('Failed to fetch departments from backend, using default list', error);
+      return [
+        { id: 1, name: 'Computer Science & Engineering', code: 'CSE' },
+        { id: 2, name: 'Mechanical Engineering', code: 'ME' },
+        { id: 3, name: 'Electrical & Electronics Engineering', code: 'EEE' },
+        { id: 4, name: 'Civil Engineering', code: 'CE' },
+        { id: 5, name: 'Management Studies', code: 'MBA' },
+      ];
+    }
+  },
+
+  /**
    * Retrieves authenticated profile for current in-memory JWT via /api/v1/auth/me
    * @returns {Promise<Object|null>}
    */
