@@ -68,6 +68,6 @@ public class HealthControllerTests {
     void testUnauthenticatedAccessDenied() throws Exception {
         mockMvc.perform(get("/cases")
                         .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }
