@@ -4,13 +4,14 @@ import { useAuth } from '../../context/AuthContext';
 import UnauthorizedPage from '../../pages/UnauthorizedPage';
 
 /**
- * Route guard that validates whether the current demo role is permitted.
+ * Route guard that validates whether the backend user's active role is permitted.
  * If unauthorized, renders the Access Denied (UnauthorizedPage) view.
  */
 export const RequireRole = ({ allowedRoles = [] }) => {
-  const { currentRole } = useAuth();
+  const { currentUser, currentRole } = useAuth();
+  const roleKey = currentUser?.role || currentRole?.key;
 
-  if (allowedRoles.length > 0 && !allowedRoles.includes(currentRole.key)) {
+  if (allowedRoles.length > 0 && (!roleKey || !allowedRoles.includes(roleKey))) {
     return <UnauthorizedPage />;
   }
 

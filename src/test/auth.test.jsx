@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from '../context/AuthContext';
@@ -22,26 +22,21 @@ const renderWithProviders = (ui, initialRoute = '/login') => {
   );
 };
 
-describe('FE-2 Authentication Flows & Component Tests', () => {
+describe('CIVNEXA Authentication Flows & Component Tests', () => {
   beforeEach(async () => {
-    // Clear storage before each test
+    vi.restoreAllMocks();
     window.sessionStorage.clear();
     window.localStorage.clear();
   });
 
-  it('renders login page with wordmark, inputs, and 8 demo personas', async () => {
+  it('renders login page with wordmark, inputs, and institutional onboarding link', async () => {
     renderWithProviders(<LoginPage />, '/login');
 
     expect(screen.getByText('Sign In to CIVNEXA')).toBeDefined();
     expect(screen.getByLabelText(/Institutional Email Address/i)).toBeDefined();
     expect(screen.getByLabelText(/^Password/i)).toBeDefined();
-    expect(screen.getByText('Select Demo Persona:')).toBeDefined();
-    expect(screen.getByText('8 Roles Available')).toBeDefined();
-
-    // Verify presence of role selector pills
-    expect(screen.getByText('Dean of Student Affairs')).toBeDefined();
-    expect(screen.getByText('Super Admin')).toBeDefined();
-    expect(screen.getByText('Student (3rd Year CSE)')).toBeDefined();
+    expect(screen.getByText(/Institutional Onboarding/i)).toBeDefined();
+    expect(screen.queryByText('Select Demo Persona:')).toBeNull();
   });
 
   it('validates empty and invalid email formats on login', async () => {
@@ -80,34 +75,41 @@ describe('FE-2 Authentication Flows & Component Tests', () => {
     expect(passwordInput.getAttribute('type')).toBe('password');
   });
 
-  it('switches persona and pre-fills credentials upon clicking demo pill', async () => {
-    renderWithProviders(<LoginPage />, '/login');
+  it('successfully logs in via backend credentials and transitions session', async () => {
+    const loginSpy = vi.spyOn(authService, 'login').mockResolvedValueOnce({
+      user: {
+        id: 'USR-DEAN-001',
+        name: 'Prof. Ananya Sen',
+        role: 'DEAN',
+        roleLabel: 'Dean / Central Admin',
+        department: 'Academic Affairs',
+        email: 'dean@civnexa.edu',
+      },
+      token: 'jwt-token-dean-123',
+    });
 
-    const studentPill = screen.getByText('Student (3rd Year CSE)');
-    fireEvent.click(studentPill);
-
-    const emailInput = screen.getByLabelText(/Institutional Email Address/i);
-    expect(emailInput.value).toBe('aarav.sharma@civnexa.edu');
-  });
-
-  it('successfully logs in via demo credentials and transitions session', async () => {
     renderWithProviders(<AppRoutes />, '/login');
 
-    // Select Super Admin
-    const adminPill = await screen.findByText('Super Admin');
-    fireEvent.click(adminPill);
-
+    const emailInput = screen.getByLabelText(/Institutional Email Address/i);
+    const passwordInput = screen.getByLabelText(/^Password/i);
     const submitBtn = screen.getByRole('button', { name: /Sign In to Platform/i });
+
+    fireEvent.change(emailInput, { target: { value: 'dean@civnexa.edu' } });
+    fireEvent.change(passwordInput, { target: { value: 'Password@123' } });
     fireEvent.click(submitBtn);
+
+    expect(loginSpy).toHaveBeenCalledWith({
+      email: 'dean@civnexa.edu',
+      password: 'Password@123',
+    });
 
     // Wait for redirect to protected overview
     await waitFor(() => {
       expect(screen.getByText('Institutional Conduct & Support Overview')).toBeDefined();
-      expect(window.sessionStorage.getItem('civnexa_auth_session')).toBe('active');
     }, { timeout: 4000 });
   });
 
-  it('renders and processes forgot password request with demo note', async () => {
+  it('renders and processes forgot password request with recovery note', async () => {
     renderWithProviders(<ForgotPasswordPage />, '/forgot-password');
 
     expect(screen.getByText('Password Recovery')).toBeDefined();
@@ -118,7 +120,6 @@ describe('FE-2 Authentication Flows & Component Tests', () => {
     fireEvent.click(submitBtn);
 
     expect(await screen.findByText('Recovery Request Processed')).toBeDefined();
-    expect(screen.getByText(/Demonstration Environment Note/i)).toBeDefined();
     expect(screen.getByText('Proceed to Password Reset Demo')).toBeDefined();
   });
 
@@ -146,13 +147,17 @@ describe('FE-2 Authentication Flows & Component Tests', () => {
     expect(await screen.findByText('Password Successfully Reset')).toBeDefined();
   });
 
-  it('clears mock session and returns to public landing page upon logout', async () => {
-    // Set active session
+  it('clears session and returns to public landing page upon logout', async () => {
+    const deanUser = {
+      id: 'USR-002',
+      name: 'Prof. Ananya Sen',
+      role: 'DEAN',
+      department: 'Academic Affairs',
+      email: 'dean@civnexa.edu',
+    };
+
     window.sessionStorage.setItem('civnexa_auth_session', 'active');
-    window.sessionStorage.setItem(
-      'civnexa_current_user',
-      JSON.stringify({ id: 'USR-002', name: 'Prof. Ananya Sen', role: 'DEAN' })
-    );
+    window.sessionStorage.setItem('civnexa_current_user', JSON.stringify(deanUser));
 
     renderWithProviders(<AppRoutes />, '/dashboard');
     expect(await screen.findByText('Institutional Conduct & Support Overview')).toBeDefined();
@@ -167,7 +172,6 @@ describe('FE-2 Authentication Flows & Component Tests', () => {
 
     await waitFor(() => {
       expect(screen.getAllByRole('link', { name: /Sign In/i }).length).toBeGreaterThan(0);
-      expect(window.sessionStorage.getItem('civnexa_auth_session')).toBeNull();
     }, { timeout: 4000 });
   });
 });

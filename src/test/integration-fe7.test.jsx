@@ -58,7 +58,7 @@ describe('CIVNEXA FE-7: Master Frontend Integration & Verification Suite', () =>
       );
 
       expect(screen.getByText('Sign In to CIVNEXA')).toBeDefined();
-      expect(screen.getByText('Select Demo Persona:')).toBeDefined();
+      expect(screen.getByLabelText(/Institutional Email Address/i)).toBeDefined();
       unmount();
 
       render(

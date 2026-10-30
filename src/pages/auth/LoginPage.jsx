@@ -1,39 +1,25 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, LogIn, Shield, CheckCircle2, AlertCircle, Info } from 'lucide-react';
+import { Eye, EyeOff, LogIn, AlertCircle, ShieldAlert, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { authService, DEMO_PASSWORD } from '../../services/authService';
 import { pageTransitionVariants } from '../../animations/motionVariants';
 
 export const LoginPage = () => {
-  const { login, roles } = useAuth();
+  const { login } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const demoUsers = authService.getDemoCredentials();
-  const [selectedPersona, setSelectedPersona] = useState(demoUsers[1]); // Default to Dean
-
-  const [email, setEmail] = useState(demoUsers[1].email);
-  const [password, setPassword] = useState(DEMO_PASSWORD);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
-
-  // Handle demo persona selection
-  const handleSelectPersona = (persona) => {
-    setSelectedPersona(persona);
-    setEmail(persona.email);
-    setPassword(DEMO_PASSWORD);
-    setErrorMessage('');
-    setEmailError('');
-    setPasswordError('');
-  };
 
   const validateForm = () => {
     let isValid = true;
@@ -74,12 +60,10 @@ export const LoginPage = () => {
       const result = await login({
         email: email.trim(),
         password,
-        roleKey: selectedPersona?.role,
-        rememberMe,
       });
 
       toast.success(
-        `Welcome, ${result.user.name}. Active Role: ${result.user.roleLabel}`,
+        `Welcome, ${result.user.name}. Authenticated Role: ${result.user.roleLabel}`,
         'Authentication Successful'
       );
 
@@ -100,8 +84,9 @@ export const LoginPage = () => {
 
       navigate(from, { replace: true });
     } catch (err) {
-      setErrorMessage(err.message || 'Authentication failed. Please verify your credentials.');
-      toast.error(err.message || 'Login failed', 'Authentication Error');
+      const msg = err.message || 'Authentication failed. Please verify your credentials.';
+      setErrorMessage(msg);
+      toast.error(msg, 'Authentication Error');
     } finally {
       setIsLoading(false);
     }
@@ -124,53 +109,14 @@ export const LoginPage = () => {
         </p>
       </div>
 
-      {/* Quick Demo Role Selector Pills */}
-      <div className="p-3 mb-4 rounded-3 border bg-light">
-        <div className="d-flex align-items-center justify-content-between mb-2">
-          <div className="d-flex align-items-center gap-1.5 small fw-bold text-dark">
-            <Shield size={14} style={{ color: 'var(--cx-teal-600)' }} />
-            <span>Select Demo Persona:</span>
-          </div>
-          <span className="badge bg-white text-muted border small" style={{ fontSize: '0.65rem' }}>
-            8 Roles Available
-          </span>
-        </div>
-
-        <div className="d-flex flex-wrap gap-1.5">
-          {demoUsers.map((persona) => {
-            const isSelected = selectedPersona?.role === persona.role;
-            return (
-              <button
-                key={persona.id}
-                type="button"
-                onClick={() => handleSelectPersona(persona)}
-                className={`btn btn-sm py-1 px-2.5 rounded-2 d-flex align-items-center gap-1 ${
-                  isSelected ? 'btn-primary' : 'btn-outline-secondary bg-white'
-                }`}
-                style={{
-                  fontSize: '0.72rem',
-                  fontWeight: isSelected ? 700 : 500,
-                  transition: 'all 150ms ease',
-                }}
-              >
-                <span>{persona.roleLabel}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {selectedPersona && (
-          <div className="mt-2 pt-2 border-top text-muted" style={{ fontSize: '0.72rem' }}>
-            Selected: <strong className="text-dark">{selectedPersona.name}</strong> •{' '}
-            <span>{selectedPersona.description}</span>
-          </div>
-        )}
-      </div>
-
       {/* Global Error Banner */}
       {errorMessage && (
         <div className="alert alert-danger p-2.5 small d-flex align-items-start gap-2 mb-3" role="alert">
-          <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+          {errorMessage.includes('Too many') ? (
+            <ShieldAlert size={16} className="mt-0.5 flex-shrink-0 text-danger" />
+          ) : (
+            <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+          )}
           <div>{errorMessage}</div>
         </div>
       )}
@@ -187,7 +133,7 @@ export const LoginPage = () => {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="e.g., ananya.sen@civnexa.edu"
+            placeholder="e.g., student@civnexa.edu"
             className={`cx-input ${emailError ? 'is-invalid border-danger' : ''}`}
             aria-invalid={Boolean(emailError)}
             aria-describedby={emailError ? 'login-email-error' : undefined}
@@ -245,7 +191,7 @@ export const LoginPage = () => {
           )}
         </div>
 
-        {/* Remember Me */}
+        {/* Remember Institutional Session */}
         <div className="d-flex align-items-center justify-content-between mb-4">
           <div className="form-check">
             <input
@@ -283,13 +229,12 @@ export const LoginPage = () => {
         </button>
       </form>
 
-      {/* Demo Credentials Disclaimer Box */}
-      <div className="mt-4 pt-3 border-top text-center text-muted" style={{ fontSize: '0.72rem' }}>
-        <div className="d-flex align-items-center justify-content-center gap-1.5 text-secondary mb-1">
-          <Info size={13} />
-          <span>Demo credential default: <code>Password@123</code></span>
-        </div>
-        <div>Selecting any persona pill above automatically pre-populates valid demonstration credentials.</div>
+      {/* Institutional Provisioning & Onboarding Footer */}
+      <div className="mt-4 pt-3 border-top text-center text-muted" style={{ fontSize: '0.8rem' }}>
+        <span>Need an account? </span>
+        <Link to="/register" className="text-decoration-none fw-semibold text-primary hover-underline">
+          Institutional Onboarding <ArrowRight size={13} className="d-inline" />
+        </Link>
       </div>
     </motion.div>
   );

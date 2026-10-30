@@ -3,11 +3,11 @@ import AnimatedPage from '../components/common/AnimatedPage';
 import PageHeader from '../components/common/PageHeader';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { Settings, Shield, User, Bell, Database, RefreshCw, Check } from 'lucide-react';
+import { Settings, Shield, User, Bell, Database, Check } from 'lucide-react';
 import caseService from '../services/caseService';
 
 export const SettingsPage = () => {
-  const { currentUser, currentRole, roles, switchRole } = useAuth();
+  const { currentUser, currentRole, roles } = useAuth();
   const toast = useToast();
 
   const [activeTab, setActiveTab] = useState('account');
@@ -51,7 +51,7 @@ export const SettingsPage = () => {
               style={{ fontSize: '0.85rem', fontWeight: activeTab === 'roles' ? 700 : 500 }}
             >
               <Shield size={16} />
-              <span>Role Permissions & Switcher</span>
+              <span>Role Permissions & Authority</span>
             </button>
             <button
               type="button"
@@ -72,55 +72,61 @@ export const SettingsPage = () => {
           <div className="cx-card p-4">
             {activeTab === 'account' && (
               <div>
-                <h2 className="h6 fw-bold mb-3 text-dark">Active Persona Details</h2>
+                <h2 className="h6 fw-bold mb-3 text-dark">Active Institutional Profile</h2>
                 <div className="mb-3">
                   <label className="cx-form-label">Full Name</label>
-                  <input type="text" readOnly value={currentUser.name} className="cx-input bg-light" />
+                  <input type="text" readOnly value={currentUser?.name || ''} className="cx-input bg-light" />
                 </div>
                 <div className="mb-3">
                   <label className="cx-form-label">Official Email</label>
-                  <input type="text" readOnly value={currentUser.email} className="cx-input bg-light" />
+                  <input type="text" readOnly value={currentUser?.email || ''} className="cx-input bg-light" />
                 </div>
                 <div className="mb-3">
                   <label className="cx-form-label">Assigned Department</label>
-                  <input type="text" readOnly value={currentUser.department} className="cx-input bg-light" />
+                  <input type="text" readOnly value={currentUser?.department || ''} className="cx-input bg-light" />
                 </div>
                 <div className="mb-3">
-                  <label className="cx-form-label">Designation</label>
-                  <input type="text" readOnly value={currentUser.title} className="cx-input bg-light" />
+                  <label className="cx-form-label">Active Role</label>
+                  <input type="text" readOnly value={currentRole?.label || currentUser?.role || ''} className="cx-input bg-light" />
+                </div>
+                <div className="mb-3">
+                  <label className="cx-form-label">Institutional Reference</label>
+                  <input type="text" readOnly value={currentUser?.userReference || currentUser?.id || ''} className="cx-input bg-light" />
                 </div>
               </div>
             )}
 
             {activeTab === 'roles' && (
               <div>
-                <h2 className="h6 fw-bold mb-1 text-dark">Institutional Roles Simulation</h2>
+                <h2 className="h6 fw-bold mb-1 text-dark">Institutional Role & Permissions</h2>
                 <p className="text-muted small mb-3">
-                  Select a persona below to simulate navigation and context across the 8 institutional roles.
+                  Your active role is bound to your backend credentials and institutional directory entry.
                 </p>
                 <div className="d-flex flex-column gap-2">
                   {Object.values(roles).map((r) => {
-                    const isSelected = r.key === currentRole.key;
+                    const isSelected = r.key === (currentUser?.role || currentRole?.key);
                     return (
                       <div
                         key={r.key}
-                        onClick={() => {
-                          switchRole(r.key);
-                          toast.success(`Active persona switched to ${r.label}`);
-                        }}
-                        className={`p-3 rounded-2 border cursor-pointer d-flex align-items-center justify-content-between ${
+                        className={`p-3 rounded-2 border d-flex align-items-center justify-content-between ${
                           isSelected ? 'bg-light border-primary' : 'bg-white'
                         }`}
-                        style={{ cursor: 'pointer' }}
                       >
                         <div>
-                          <div className="fw-bold small text-dark">{r.label}</div>
+                          <div className="fw-bold small text-dark d-flex align-items-center gap-2">
+                            <span>{r.label}</span>
+                            {isSelected && (
+                              <span className="badge bg-primary text-white" style={{ fontSize: '0.65rem' }}>
+                                Your Active Role
+                              </span>
+                            )}
+                          </div>
                           <div className="text-muted small" style={{ fontSize: '0.75rem' }}>
                             {r.description}
                           </div>
                         </div>
                         {isSelected && (
-                          <span className="badge bg-primary text-white">Active</span>
+                          <Check size={16} className="text-primary flex-shrink-0" />
                         )}
                       </div>
                     );

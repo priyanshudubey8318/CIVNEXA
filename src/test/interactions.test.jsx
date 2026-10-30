@@ -6,11 +6,12 @@ import { AuthProvider } from '../context/AuthContext';
 import { ToastProvider } from '../context/ToastContext';
 import AppRoutes from '../routes/AppRoutes';
 import caseService from '../services/caseService';
+import { MOCK_USERS } from '../mocks/mockUsers';
 
 const renderApp = (initialRoute = '/dashboard') => {
   return render(
     <MemoryRouter initialEntries={[initialRoute]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <AuthProvider>
+      <AuthProvider initialUser={MOCK_USERS[1]} defaultAuthenticated={true}>
         <ToastProvider>
           <AppRoutes />
         </ToastProvider>
@@ -128,20 +129,11 @@ describe('Core FE-1 Interactions & Component Verification', () => {
     });
   });
 
-  it('switches role persona via topbar dropdown', async () => {
+  it('displays active institutional role badge in topbar', async () => {
     renderApp('/dashboard');
-    const roleButton = await screen.findByTitle(/Role Switcher/i);
-    fireEvent.click(roleButton);
-
-    expect(await screen.findByText(/ROLE WORKSPACE SWITCHER/i)).toBeDefined();
-
-    // Select Head of Department
-    const hodOption = screen.getByText(/Head of Department \(HOD\)/i);
-    fireEvent.click(hodOption);
-
-    await waitFor(() => {
-      expect(screen.getAllByText(/Head of Department/i).length).toBeGreaterThan(0);
-    });
+    const roleBadge = await screen.findByTitle(/Active Institutional Role/i);
+    expect(roleBadge).toBeDefined();
+    expect(screen.getAllByText(/Dean \/ Central Admin/i).length).toBeGreaterThan(0);
   });
 
   it('opens and manages notifications panel', async () => {

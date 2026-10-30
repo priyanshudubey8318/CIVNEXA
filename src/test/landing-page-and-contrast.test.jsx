@@ -1,11 +1,12 @@
 import React from 'react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AuthProvider } from '../context/AuthContext';
 import { ToastProvider } from '../context/ToastContext';
 import AppRoutes from '../routes/AppRoutes';
-import { MOCK_USERS } from '../mocks/mockUsers';
+import { ROLES, MOCK_USERS } from '../mocks/mockUsers';
+import authService from '../services/authService';
 
 const renderApp = (initialRoute = '/', defaultAuthenticated = false, mockUser = null) => {
   if (mockUser) {
@@ -18,7 +19,7 @@ const renderApp = (initialRoute = '/', defaultAuthenticated = false, mockUser = 
 
   return render(
     <MemoryRouter initialEntries={[initialRoute]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <AuthProvider defaultAuthenticated={defaultAuthenticated}>
+      <AuthProvider defaultAuthenticated={defaultAuthenticated} initialUser={mockUser}>
         <ToastProvider>
           <AppRoutes />
         </ToastProvider>
@@ -60,8 +61,8 @@ describe('CIVNEXA — Landing Page, Routing & Contrast Quality Verification', ()
     renderApp('/login', false);
 
     expect(await screen.findByText('Sign In to CIVNEXA')).toBeDefined();
-    expect(screen.getByPlaceholderText(/ananya\.sen@civnexa\.edu/i)).toBeDefined();
-    expect(screen.getByText(/Select Demo Persona:/i)).toBeDefined();
+    expect(screen.getByLabelText(/Institutional Email Address/i)).toBeDefined();
+    expect(screen.getByText(/Institutional Onboarding/i)).toBeDefined();
   });
 
   it('3. Redirects unauthenticated users attempting to access protected routes to /login', async () => {
@@ -89,17 +90,22 @@ describe('CIVNEXA — Landing Page, Routing & Contrast Quality Verification', ()
   });
 
   it('6. Successfully logs in from login page and reaches the dashboard', async () => {
+    const student = MOCK_USERS.find((u) => u.role === 'STUDENT');
+    vi.spyOn(authService, 'login').mockResolvedValueOnce({
+      user: student,
+      token: 'jwt-student-token-test',
+    });
+
     renderApp('/login', false);
 
-    // Click Student persona pill
-    const studentPersonaBtn = await screen.findByRole('button', { name: /Student \(3rd Year CSE\)/i });
-    fireEvent.click(studentPersonaBtn);
+    const emailInput = screen.getByLabelText(/Institutional Email Address/i);
+    const passInput = screen.getByLabelText(/^Password/i);
+    fireEvent.change(emailInput, { target: { value: student.email } });
+    fireEvent.change(passInput, { target: { value: 'ValidPassword@123' } });
 
-    // Click Sign In button
     const submitBtn = screen.getByRole('button', { name: /Sign In to Platform/i });
     fireEvent.click(submitBtn);
 
-    // Should navigate to dashboard
     await waitFor(() => {
       expect(screen.getByText(/Student Support & Conduct Portal/i)).toBeDefined();
     }, { timeout: 4000 });

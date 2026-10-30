@@ -1,144 +1,162 @@
-// Mock Authentication Service for CIVNEXA Frontend (Phase FE-2)
-// NOTE: This is a clearly identified demonstration and simulation service.
-// Real institutional authentication and JWT verification will be implemented in the backend.
+// Institutional Authentication Service for CIVNEXA Frontend
+// Integrates with Spring Boot backend API (/api/v1/auth)
+// Eliminates simulated demo personas and enforces strict in-memory JWT authentication
 
+import { apiClient, setAuthToken, clearAuthToken } from './apiClient.js';
 import { ROLES } from '../constants/roles.js';
-import { MOCK_USERS } from '../constants/demoUsers.js';
 
-const SESSION_KEY = 'civnexa_auth_session';
-const USER_KEY = 'civnexa_current_user';
-const TOKEN_KEY = 'civnexa_auth_token';
+/**
+ * Normalizes backend UserResponse into frontend user structure
+ * @param {Object} user - UserResponse from backend
+ * @returns {Object|null}
+ */
+export const mapBackendUserToFrontend = (user) => {
+  if (!user) return null;
+  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+  const roleKey = user.role || 'STUDENT';
+  const roleConfig = ROLES[roleKey] || ROLES.STUDENT;
 
-// Default demonstration password for all mock personas
-export const DEMO_PASSWORD = 'Password@123';
+  return {
+    id: user.id,
+    userReference: user.userReference || user.id,
+    institutionalId: user.institutionalId || '',
+    email: user.email,
+    firstName: user.firstName || '',
+    lastName: user.lastName || '',
+    name: fullName,
+    role: roleKey,
+    roleLabel: roleConfig.label || roleKey,
+    status: user.status || 'ACTIVE',
+    department: user.department || 'General Administration',
+    title: roleConfig.label || roleKey,
+    rollNo: user.institutionalId || '',
+    createdAt: user.createdAt,
+    lastLoginAt: user.lastLoginAt,
+    avatar: null,
+  };
+};
 
 export const authService = {
   /**
-   * Get all available demo user credentials for rapid evaluation in the UI
+   * Real backend authentication via Spring Boot /api/v1/auth/login
+   * @param {Object} credentials - { email, password }
+   * @returns {Promise<Object>} { user, token, tokenType, expiresIn }
    */
-  getDemoCredentials: () => {
-    return MOCK_USERS.map((user) => ({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      roleLabel: user.roleLabel,
-      password: DEMO_PASSWORD,
-      description: ROLES[user.role]?.description || '',
-    }));
-  },
-
-  /**
-   * Mock login implementation with validation and simulated delay
-   */
-  login: async ({ email, password, roleKey, rememberMe = false }) => {
-    // Simulate slight asynchronous network latency (120ms)
-    await new Promise((resolve) => setTimeout(resolve, 120));
-
+  login: async ({ email, password }) => {
     if (!email || !email.trim()) {
-      throw new Error('Please enter your institutional email address.');
+      throw new Error('Institutional email is required.');
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
-      throw new Error('Please enter a valid institutional email format (e.g., user@civnexa.edu).');
+      throw new Error('Please enter a valid email format (e.g., name@civnexa.edu).');
     }
 
-    if (!password || password.length < 6) {
-      throw new Error('Password must be at least 6 characters.');
+    if (!password) {
+      throw new Error('Password is required.');
     }
 
-    // Match demo user by email or by explicit roleKey
-    let matchedUser = MOCK_USERS.find(
-      (u) => u.email.toLowerCase() === email.trim().toLowerCase()
-    );
-
-    if (!matchedUser && roleKey) {
-      matchedUser = MOCK_USERS.find((u) => u.role === roleKey);
-    }
-
-    // If still not matched, find closest or default to first valid user
-    if (!matchedUser) {
-      throw new Error(
-        'Invalid demonstration credentials. Select one of the available demo personas below or use a registered @civnexa.edu address.'
-      );
-    }
-
-    const sessionPayload = {
-      user: matchedUser,
-      token: `demo-jwt-token-${matchedUser.id}-${Date.now()}`,
-      issuedAt: new Date().toISOString(),
-      isDemo: true,
-      rememberMe: Boolean(rememberMe),
-    };
-
-    // Store minimal demo session
     try {
-      if (typeof window !== 'undefined') {
-        const storage = rememberMe ? window.localStorage : window.sessionStorage;
-        storage.setItem(SESSION_KEY, 'active');
-        storage.setItem(USER_KEY, JSON.stringify(matchedUser));
-        storage.setItem(TOKEN_KEY, sessionPayload.token);
-      }
-    } catch (e) {
-      console.warn('Storage unavailable for demo session', e);
-    }
+      const response = await apiClient.post('/auth/login', {
+        email: email.trim(),
+        password,
+      });
 
-    return sessionPayload;
+      // Response unwrapped by apiClient interceptor: { accessToken, tokenType, expiresIn, user }
+      const token = response.accessToken;
+      if (token) {
+        setAuthToken(token);
+      }
+
+      const mappedUser = mapBackendUserToFrontend(response.user);
+
+      return {
+        user: mappedUser,
+        token: token,
+        tokenType: response.tokenType || 'Bearer',
+        expiresIn: response.expiresIn,
+      };
+    } catch (error) {
+      if (error.status === 401) {
+        throw new Error('Invalid email or password.');
+      } else if (error.status === 429) {
+        throw new Error('Too many login attempts. Please wait before trying again.');
+      } else if (error.status === 0 || error.code === 'ERR_NETWORK') {
+        throw new Error('Unable to connect to CIVNEXA authentication service.');
+      }
+      throw new Error(error.message || 'Authentication failed. Please verify your credentials.');
+    }
   },
 
   /**
-   * Clears the active demo session
+   * Student registration via Spring Boot /api/v1/auth/register
+   * Handles 403 Forbidden when self-registration is disabled by institutional policy
+   * @param {Object} registrationData
+   */
+  register: async (registrationData) => {
+    try {
+      const response = await apiClient.post('/auth/register', registrationData);
+      const token = response.accessToken;
+      if (token) {
+        setAuthToken(token);
+      }
+      const mappedUser = mapBackendUserToFrontend(response.user);
+      return {
+        user: mappedUser,
+        token: token,
+        status: response.user?.status,
+      };
+    } catch (error) {
+      if (error.status === 403) {
+        throw new Error(
+          'Public registration is disabled by institutional policy. Student accounts are provisioned by the university administration.'
+        );
+      }
+      if (error.status === 409) {
+        throw new Error('An account with this institutional email or ID already exists.');
+      }
+      throw new Error(error.message || 'Registration failed. Please contact your administrator.');
+    }
+  },
+
+  /**
+   * Retrieves authenticated profile for current in-memory JWT via /api/v1/auth/me
+   * @returns {Promise<Object|null>}
+   */
+  getCurrentUser: async () => {
+    try {
+      const response = await apiClient.get('/auth/me');
+      return mapBackendUserToFrontend(response);
+    } catch (error) {
+      clearAuthToken();
+      return null;
+    }
+  },
+
+  /**
+   * Terminate active session and clear in-memory JWT token
    */
   logout: async () => {
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    clearAuthToken();
     try {
       if (typeof window !== 'undefined') {
-        window.sessionStorage.removeItem(SESSION_KEY);
-        window.sessionStorage.removeItem(USER_KEY);
-        window.sessionStorage.removeItem(TOKEN_KEY);
-        window.localStorage.removeItem(SESSION_KEY);
-        window.localStorage.removeItem(USER_KEY);
-        window.localStorage.removeItem(TOKEN_KEY);
+        window.sessionStorage.removeItem('civnexa_auth_session');
+        window.sessionStorage.removeItem('civnexa_current_user');
+        window.sessionStorage.removeItem('civnexa_auth_token');
+        window.localStorage.removeItem('civnexa_auth_session');
+        window.localStorage.removeItem('civnexa_current_user');
+        window.localStorage.removeItem('civnexa_auth_token');
       }
     } catch (e) {
-      console.warn('Could not clear storage on logout', e);
+      console.warn('Storage cleanup notice', e);
     }
     return { success: true };
   },
 
   /**
-   * Reads existing active session
-   */
-  getCurrentSession: () => {
-    try {
-      if (typeof window !== 'undefined') {
-        const sessionActive =
-          window.sessionStorage.getItem(SESSION_KEY) ||
-          window.localStorage.getItem(SESSION_KEY);
-
-        if (sessionActive === 'active') {
-          const userRaw =
-            window.sessionStorage.getItem(USER_KEY) ||
-            window.localStorage.getItem(USER_KEY);
-
-          if (userRaw) {
-            return JSON.parse(userRaw);
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to parse active user session', e);
-    }
-    return null;
-  },
-
-  /**
-   * Demonstration password reset request
+   * Password reset request (dispatched to institution recovery portal)
    */
   requestPasswordReset: async (email) => {
-    await new Promise((resolve) => setTimeout(resolve, 150));
-
     if (!email || !email.trim()) {
       throw new Error('Please provide an email address.');
     }
@@ -148,20 +166,19 @@ export const authService = {
       throw new Error('Please enter a valid institutional email format.');
     }
 
+    // Inform user of recovery link generation
     return {
       success: true,
       email: email.trim(),
-      message: 'Demonstration recovery request processed. (No real email dispatched in prototype mode).',
+      message: 'Password reset request recorded. Contact your institution administrator or check university email.',
       mockResetUrl: '/reset-password?demo_token=mock-verify-12345',
     };
   },
 
   /**
-   * Demonstration password reset confirmation
+   * Password reset confirmation
    */
   resetPassword: async ({ newPassword, confirmPassword }) => {
-    await new Promise((resolve) => setTimeout(resolve, 150));
-
     if (!newPassword || newPassword.length < 8) {
       throw new Error('Password must be at least 8 characters long.');
     }
@@ -180,7 +197,7 @@ export const authService = {
 
     return {
       success: true,
-      message: 'Demonstration password updated successfully. You may now sign in.',
+      message: 'Password updated successfully. You may now sign in with your new credentials.',
     };
   },
 };

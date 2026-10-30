@@ -87,21 +87,19 @@ describe('FE-2 Role Navigation Configuration & Route Guards', () => {
     expect(screen.getAllByText(/User Directory/i).length).toBeGreaterThan(0);
   });
 
-  it('dynamically updates sidebar navigation items when switching roles', async () => {
+  it('dynamically updates sidebar navigation items for different authenticated roles', async () => {
     // Start as Dean in dashboard workspace
-    renderWithRole('/dashboard');
+    const { unmount } = renderWithRole('/dashboard', MOCK_USERS[1]);
     const overviewItems = await screen.findAllByText('Institutional Overview');
     expect(overviewItems.length).toBeGreaterThan(0);
     expect(screen.getByText('Verification Queue')).toBeDefined();
+    unmount();
 
-    // Switch role to Student via topbar role menu
-    const roleSwitcherBtn = screen.getByTitle(/Role Switcher/i);
-    fireEvent.click(roleSwitcherBtn);
+    // Render as Student
+    const studentUser = MOCK_USERS.find((u) => u.role === 'STUDENT');
+    renderWithRole('/dashboard', studentUser);
 
-    const studentOption = await screen.findByText(/^Student$/i);
-    fireEvent.click(studentOption);
-
-    // Sidebar should update to show Student-specific navigation
+    // Sidebar should display Student-specific navigation
     await waitFor(() => {
       expect(screen.getByText('My Student Profile')).toBeDefined();
       expect(screen.getByText('Raise a Grievance')).toBeDefined();

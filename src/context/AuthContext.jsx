@@ -1,98 +1,143 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { ROLES } from '../constants/roles.js';
-import { MOCK_USERS } from '../constants/demoUsers.js';
 import authService from '../services/authService.js';
+import { registerUnauthorizedHandler, clearAuthToken } from '../services/apiClient.js';
 
 const AuthContext = createContext(null);
 
-export const AuthProvider = ({ children, defaultAuthenticated = null }) => {
-  // Determine initial authentication state
+/**
+ * Institutional Authentication Provider for CIVNEXA
+ * Enforces real backend authentication, in-memory JWT tokens, and database role authority
+ */
+export const AuthProvider = ({
+  children,
+  defaultAuthenticated = null,
+  initialUser = null,
+}) => {
+  // Support initialUser prop or test runner fixture
+  const [currentUser, setCurrentUser] = useState(() => {
+    if (initialUser) return initialUser;
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = window.sessionStorage.getItem('civnexa_current_user');
+        if (stored) return JSON.parse(stored);
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
+
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     if (typeof defaultAuthenticated === 'boolean') {
       return defaultAuthenticated;
     }
-    const session = authService.getCurrentSession();
-    return Boolean(session);
-  });
-
-  // Current authenticated user persona
-  const [currentUser, setCurrentUser] = useState(() => {
-    const existing = authService.getCurrentSession();
-    if (existing) {
-      const match = MOCK_USERS.find((u) => u.id === existing.id || u.role === existing.role);
-      if (match) return match;
-    }
-    // Default fallback to Dean for administrative demonstration
-    return MOCK_USERS[1];
-  });
-
-  // Keep sessionStorage in sync when switching user
-  const syncSessionUser = useCallback((user) => {
+    if (initialUser) return true;
     try {
       if (typeof window !== 'undefined') {
-        window.sessionStorage.setItem('civnexa_current_user', JSON.stringify(user));
-        window.sessionStorage.setItem('civnexa_demo_user_id', user.id);
+        const sessionActive = window.sessionStorage.getItem('civnexa_auth_session');
+        const userStored = window.sessionStorage.getItem('civnexa_current_user');
+        return Boolean(sessionActive === 'active' || userStored);
       }
-    } catch (e) {
-      console.warn('Storage sync failed', e);
+    } catch {
+      // ignore
     }
+    return false;
+  });
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [authError, setAuthError] = useState(null);
+
+  // Synchronize 401 Unauthorized API interceptor to clear auth state automatically
+  useEffect(() => {
+    registerUnauthorizedHandler(() => {
+      clearAuthToken();
+      setCurrentUser(null);
+      setIsAuthenticated(false);
+      try {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.removeItem('civnexa_auth_session');
+          window.sessionStorage.removeItem('civnexa_current_user');
+        }
+      } catch {
+        // ignore
+      }
+    });
   }, []);
 
-  const login = async ({ email, password, roleKey, rememberMe = false }) => {
-    const result = await authService.login({ email, password, roleKey, rememberMe });
-    setCurrentUser(result.user);
-    setIsAuthenticated(true);
-    syncSessionUser(result.user);
-    return result;
+  /**
+   * Authenticate against backend /api/v1/auth/login
+   */
+  const login = async ({ email, password }) => {
+    setIsLoading(true);
+    setAuthError(null);
+    try {
+      const result = await authService.login({ email, password });
+      setCurrentUser(result.user);
+      setIsAuthenticated(true);
+      return result;
+    } catch (err) {
+      setAuthError(err.message || 'Authentication failed.');
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
+  /**
+   * Log out and clear in-memory token & user state
+   */
   const logout = async () => {
-    await authService.logout();
-    setIsAuthenticated(false);
-  };
-
-  const switchRole = (roleKey) => {
-    const targetUser = MOCK_USERS.find((u) => u.role === roleKey);
-    if (targetUser) {
-      setCurrentUser(targetUser);
-      syncSessionUser(targetUser);
+    setIsLoading(true);
+    try {
+      await authService.logout();
+    } finally {
+      setCurrentUser(null);
+      setIsAuthenticated(false);
+      setAuthError(null);
+      setIsLoading(false);
     }
   };
 
-  const switchUser = (userId) => {
-    const targetUser = MOCK_USERS.find((u) => u.id === userId);
-    if (targetUser) {
-      setCurrentUser(targetUser);
-      syncSessionUser(targetUser);
-    }
+  /**
+   * Role check helpers
+   */
+  const hasRole = (role) => {
+    return currentUser?.role === role;
+  };
+
+  const hasAnyRole = (allowedRoles = []) => {
+    if (!allowedRoles || allowedRoles.length === 0) return true;
+    return Boolean(currentUser && allowedRoles.includes(currentUser.role));
   };
 
   const hasPermission = (allowedRoles) => {
-    if (!allowedRoles || allowedRoles.length === 0) return true;
-    return allowedRoles.includes(currentUser.role);
+    return hasAnyRole(allowedRoles);
   };
+
+  const activeRoleConfig = currentUser?.role ? ROLES[currentUser.role] : null;
 
   const value = {
     isAuthenticated,
     currentUser,
-    currentRole: ROLES[currentUser.role] || ROLES.DEAN,
+    currentRole: activeRoleConfig || { key: '', label: 'Unauthenticated', description: '' },
     roles: ROLES,
-    allUsers: MOCK_USERS,
+    isLoading,
+    authError,
     login,
     logout,
-    switchRole,
-    switchUser,
+    hasRole,
+    hasAnyRole,
     hasPermission,
-    isDemoAuth: true,
-    // Role check helpers
-    isSuperAdmin: currentUser.role === 'SUPER_ADMIN',
-    isDean: currentUser.role === 'DEAN',
-    isHod: currentUser.role === 'HOD',
-    isFaculty: currentUser.role === 'FACULTY',
-    isStaff: currentUser.role === 'STAFF',
-    isCoordinator: currentUser.role === 'COORDINATOR',
-    isCommitteeMember: currentUser.role === 'COMMITTEE_MEMBER',
-    isStudent: currentUser.role === 'STUDENT',
+    // 8 Institutional Role booleans based strictly on backend user profile
+    isSuperAdmin: currentUser?.role === 'SUPER_ADMIN',
+    isDean: currentUser?.role === 'DEAN',
+    isHod: currentUser?.role === 'HOD',
+    isFaculty: currentUser?.role === 'FACULTY',
+    isStaff: currentUser?.role === 'STAFF',
+    isCoordinator: currentUser?.role === 'COORDINATOR',
+    isCommitteeMember: currentUser?.role === 'COMMITTEE_MEMBER',
+    isStudent: currentUser?.role === 'STUDENT',
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
