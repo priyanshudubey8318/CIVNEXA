@@ -25,6 +25,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -300,5 +302,46 @@ public class AuthControllerTests {
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success", is(false)));
+    }
+
+    @Test
+    @DisplayName("Authoritative DB role: token originally generated as STUDENT reflects updated FACULTY role from DB on /auth/me")
+    void testAuthoritativeDbRoleVerificationOnGetMe() throws Exception {
+        // 1. Generate token while user is STUDENT
+        String token = jwtTokenProvider.generateToken(activeStudent);
+
+        // 2. Change role in database to FACULTY
+        activeStudent.setRole(RoleType.FACULTY);
+        userRepository.saveAndFlush(activeStudent);
+
+        // 3. Send original token to /auth/me
+        mockMvc.perform(get("/auth/me")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success", is(true)))
+                .andExpect(jsonPath("$.data.role", is("FACULTY")));
+    }
+
+    @Test
+    @DisplayName("CORS preflight: OPTIONS request from allowed frontend origin receives CORS headers and HTTP 200")
+    void testCorsPreflightOptionsRequestAllowed() throws Exception {
+        mockMvc.perform(options("/auth/login")
+                        .header("Origin", "http://localhost:5173")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "Authorization,Content-Type"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"))
+                .andExpect(header().exists("Access-Control-Allow-Methods"));
+    }
+
+    @Test
+    @DisplayName("CORS preflight: OPTIONS request from untrusted origin does not receive Access-Control-Allow-Origin")
+    void testCorsDisallowedOriginRejected() throws Exception {
+        mockMvc.perform(options("/auth/login")
+                        .header("Origin", "http://malicious-external-site.com")
+                        .header("Access-Control-Request-Method", "POST"))
+                .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
     }
 }

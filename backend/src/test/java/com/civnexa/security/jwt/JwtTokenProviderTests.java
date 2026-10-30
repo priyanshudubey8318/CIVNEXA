@@ -5,6 +5,7 @@ import com.civnexa.entity.enums.RoleType;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.MalformedJwtException;
+import io.jsonwebtoken.UnsupportedJwtException;
 import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.security.SignatureException;
 import org.junit.jupiter.api.BeforeEach;
@@ -166,5 +167,46 @@ public class JwtTokenProviderTests {
         JwtProperties blankProps = new JwtProperties();
         blankProps.setSecret("   ");
         assertThrows(IllegalStateException.class, blankProps::validate);
+    }
+
+    @Test
+    @DisplayName("Unsigned token with alg:none is rejected")
+    void testAlgorithmNoneTokenRejected() {
+        String header = java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("{\"alg\":\"none\",\"typ\":\"JWT\"}".getBytes(StandardCharsets.UTF_8));
+        String payload = java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("{\"sub\":\"STU-2026-99999\",\"iss\":\"CIVNEXA\",\"jti\":\"12345\",\"role\":\"STUDENT\"}".getBytes(StandardCharsets.UTF_8));
+        String unsignedToken = header + "." + payload + ".";
+
+        assertFalse(tokenProvider.validateToken(unsignedToken));
+        assertThrows(UnsupportedJwtException.class, () -> tokenProvider.parseAndValidateClaims(unsignedToken));
+
+        String unsignedNoTrailingDot = header + "." + payload;
+        assertFalse(tokenProvider.validateToken(unsignedNoTrailingDot));
+        assertThrows(MalformedJwtException.class, () -> tokenProvider.parseAndValidateClaims(unsignedNoTrailingDot));
+    }
+
+    @Test
+    @DisplayName("Token with unsupported algorithm (HS512 instead of HS256) is rejected")
+    void testUnsupportedAlgorithmRejected() {
+        String secret512 = "a_very_long_cryptographic_secret_key_at_least_512_bits_long_for_hs512_testing_purposes_1234567890_abcdefghij";
+        SecretKey key512 = Keys.hmacShaKeyFor(secret512.getBytes(StandardCharsets.UTF_8));
+
+        String hs512Token = io.jsonwebtoken.Jwts.builder()
+                .header()
+                    .type("JWT")
+                    .and()
+                .id(UUID.randomUUID().toString())
+                .subject("STU-2026-99999")
+                .issuer("CIVNEXA")
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + 60000))
+                .claim("role", "STUDENT")
+                .claim("userRef", "STU-2026-99999")
+                .signWith(key512, io.jsonwebtoken.Jwts.SIG.HS512)
+                .compact();
+
+        assertFalse(tokenProvider.validateToken(hs512Token));
+        assertThrows(Exception.class, () -> tokenProvider.parseAndValidateClaims(hs512Token));
     }
 }

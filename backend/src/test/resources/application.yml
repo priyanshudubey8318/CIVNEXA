@@ -26,7 +26,7 @@ spring:
 
 civnexa:
   jwt:
-    secret: civnexa_super_secure_jwt_secret_token_signing_key_at_least_256_bits_long_for_security_2026
+    secret: civnexa_test_isolated_secret_key_at_least_256_bits_long_for_test_environment_2026
     expiration-ms: 900000
     issuer: CIVNEXA
   auth:
