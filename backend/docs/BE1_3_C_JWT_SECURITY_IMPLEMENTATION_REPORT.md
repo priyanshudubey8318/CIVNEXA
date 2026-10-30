@@ -1,35 +1,36 @@
-# CIVNEXA — Phase BE-1.3-C Implementation Report
+# CIVNEXA — Phase BE-1.3-C Implementation & Final Security Verification Report
 
 **Project:** CIVNEXA — Campus Conduct, Grievance, Safety & Student Support Management System\
 **Repository:** `https://github.com/priyanshudubey8318/CIVNEXA.git`\
 **Branch:** `main`\
 **Baseline Checkpoint:** `22462740ce8cc120d1545bbcde2c6afbdfc9fc63`\
 **Phase:** BE-1.3-C — JWT Infrastructure & Spring Security Implementation\
-**Status:** Complete, Verified, Documented, and Pushed to `origin/main`
+**Security Verification Status:** Verified, Hardened, 102/102 Passing Tests, Synchronized with `origin/main`
 
 ---
 
 ## 1. Executive Summary
 
-Phase BE-1.3-C implements a production-grade, stateless JSON Web Token (JWT) authentication infrastructure and Spring Security filter chain for the CIVNEXA backend. Building upon the verified BE-1.3-B credential foundation, this phase equips CIVNEXA with:
+Phase BE-1.3-C establishes the production-grade, stateless JSON Web Token (JWT) authentication infrastructure and Spring Security filter chain for the CIVNEXA backend. Following a comprehensive security hardening audit, the implementation strictly enforces:
 
-1. **Stateless JWT Infrastructure:** Cryptographically secure HMAC-SHA256 (HS256) token issuance and verification with 15-minute default expiration, UUID token identifiers (`jti`), institutional user reference subjects (`sub`), and startup secret validation ($\ge 256$ bits).
-2. **Spring Security Filter Chain:** Stateless filter pipeline featuring `JwtAuthenticationFilter`, `JwtAuthenticationEntryPoint` (HTTP 401), `JwtAccessDeniedHandler` (HTTP 403), modern security headers (`nosniff`, `DENY`), and restrictive CORS configuration.
-3. **Authoritative Database Account Verification:** Real-time database verification within `JwtAuthenticationFilter`. Even if a JWT is cryptographically valid and unexpired, the filter queries the database to confirm the user exists and holds `status == "ACTIVE"`. Users in `PENDING_VERIFICATION`, `SUSPENDED`, or `INACTIVE` status are immediately denied authentication.
-4. **Institutional Role-Based Access Control (RBAC):** First-class support for all 8 institutional roles (`ROLE_SUPER_ADMIN`, `ROLE_DEAN`, `ROLE_HOD`, `ROLE_FACULTY`, `ROLE_STAFF`, `ROLE_COORDINATOR`, `ROLE_COMMITTEE_MEMBER`, `ROLE_STUDENT`) with method security enabled (`@EnableMethodSecurity`).
-5. **Authentication REST Endpoints:** Production-ready `AuthController` handling `POST /auth/login`, `POST /auth/register` (governed by feature flag `civnexa.auth.public-registration-enabled: false`), and `GET /auth/me` (requiring valid Bearer token). Newly registered students are assigned `PENDING_VERIFICATION` and receive no access token upon registration.
-6. **100% Test Suite Verification:** **96 tests across 10 test suites** executed via Maven Surefire with **0 failures, 0 errors, and 0 skipped**. Complete packaging verification confirmed via `mvnw package`.
+1. **Stateless JWT Engine:** Cryptographically secure HMAC-SHA256 (HS256) token issuance with a 15-minute default expiration, UUID token identifiers (`jti`), institutional user reference subjects (`sub`), and strict startup secret validation ($\ge 256$ bits / 32 UTF-8 bytes).
+2. **Authoritative Database Role & Status Verification:** During every authenticated request, `JwtAuthenticationFilter` loads the user record from the database. Spring Security authorities are assigned strictly from `user.getRole()` in the database; role claims embedded in the JWT payload are never treated as authoritative. Users in `PENDING_VERIFICATION`, `SUSPENDED`, or `INACTIVE` state, as well as deleted users, are rejected immediately.
+3. **Fail-Safe Secret Management:** Production configuration (`application.yml`) requires an explicit `JWT_SECRET` environment variable with zero hardcoded production fallbacks. If omitted or $< 32$ UTF-8 bytes, application startup fails fast. Isolated test-only secrets are strictly scoped to `application-test.yml`.
+4. **JWT Validation Hardening:** Rejection of `alg:none`, unsigned tokens, algorithm confusion, mismatched signatures, untrusted issuers, and expired tokens without application crashes.
+5. **CORS & Response Security:** No wildcard origins (`*`); explicit origin allowlists (`http://localhost:5173`, `http://localhost:5174`, `http://localhost:3000`) with credentials support, preflight `OPTIONS` verification, and modern security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`).
+6. **Authentication REST Endpoints:** Production-ready `AuthController` handling `POST /auth/login` (ACTIVE accounts only), `POST /auth/register` (disabled by default; when enabled, assigns `PENDING_VERIFICATION` and issues no token), and `GET /auth/me` (requires Bearer token; exposes no sensitive data).
+7. **Empirical Regression Verification:** **102 tests across 10 test suites** executed via Maven Surefire with **0 failures, 0 errors, and 0 skipped**. Standalone executable fat JAR packaging verified.
 
 ---
 
-## 2. Architectural Design & Component Overview
+## 2. Final Security Architecture & Core Components
 
 ```
                                   HTTP Request
                                        │
                                        ▼
                    ┌───────────────────────────────────────┐
-                   │          CorsFilter & Headers         │
+                   │         CorsFilter & Security         │
                    │ (nosniff, X-Frame-Options: DENY, CORS) │
                    └───────────────────┬───────────────────┘
                                        │
@@ -37,10 +38,13 @@ Phase BE-1.3-C implements a production-grade, stateless JSON Web Token (JWT) aut
                    ┌───────────────────────────────────────┐
                    │        JwtAuthenticationFilter        │
                    │  - Extract "Bearer <token>"           │
-                   │  - Validate signature, alg & expiry   │
+                   │  - Cryptographic validation (HS256)   │
                    │  - Extract sub (userReference)        │
-                   │  - Authoritative DB Status Check      │
-                   │    (user exists AND status == ACTIVE) │
+                   │  - Authoritative DB Query:            │
+                   │    userRepository.findByUserRef(sub)  │
+                   │  - Check: user exists & ACTIVE?       │
+                   │  - Grant Authorities: ROLE_<db_role>  │
+                   │    (stale JWT claim ignored)          │
                    └───────────────────┬───────────────────┘
                                        │
                     ┌──────────────────┴──────────────────┐
@@ -61,212 +65,123 @@ Phase BE-1.3-C implements a production-grade, stateless JSON Web Token (JWT) aut
         └───────────────────────┘   └──────────────────┘    └──────────────────┘
 ```
 
-### 2.1 JWT Configuration & Provider
+### 2.1 Authoritative Database Role & Status Verification
 
-- **`JwtProperties.java`** (`com.civnexa.security.jwt`):
-  - Configuration properties mapped under `civnexa.jwt`.
-  - Configurable properties: `secret`, `expiration-ms` (default: `900000` ms / 15 minutes), `issuer` (default: `CIVNEXA`).
-  - `@PostConstruct` fail-fast validation: ensures the secret is configured, non-blank, and contains at least 32 UTF-8 bytes (256 bits) required for HMAC-SHA256 cryptographic security.
+- Stale or tampered role claims in a JWT cannot elevate user privileges.
+- When an active user is promoted in the database (e.g. from `STUDENT` to `FACULTY`), an existing JWT originally issued with `role: "STUDENT"` immediately grants `ROLE_FACULTY` permissions on subsequent requests because `JwtAuthenticationFilter` reads `user.getRole()` directly from the fresh JPA entity.
+- If an account transitions to `SUSPENDED`, `INACTIVE`, or `PENDING_VERIFICATION`, or if the user is deleted, any existing JWT is immediately rejected on the next request.
 
-- **`JwtTokenProvider.java`** (`com.civnexa.security.jwt`):
-  - Signed using `Jwts.SIG.HS256` with JJWT 0.12.6.
-  - Header: `typ = JWT`, `alg = HS256`.
-  - Claims:
-    - `sub`: Institutional `userReference` (e.g. `STU-2026-11111`) — never exposes raw email addresses.
-    - `iss`: Configured issuer (`CIVNEXA`).
-    - `jti`: Cryptographically random UUID for token uniqueness and auditability.
-    - `iat`: Issue timestamp.
-    - `exp`: Expiration timestamp (`iat + 15m`).
-    - `role`: RoleType string (e.g. `STUDENT`, `DEAN`).
-    - `userRef`: Redundant claim matching subject for explicit claim retrieval.
-  - Defense-in-depth: Algorithm enforcement rejects any token specifying an algorithm other than `HS256` (preventing algorithm confusion or `none` attacks).
+### 2.2 JWT Secret Management & PowerShell Configuration
 
-### 2.2 Security Filter Chain & Handlers
+- **Configuration:** `civnexa.jwt.secret: ${JWT_SECRET:}` in `application.yml`.
+- **Validation:** `JwtProperties.java` validates that the secret is non-null, non-blank, and $\ge 32$ UTF-8 bytes (256 bits). If missing or invalid, an `IllegalStateException` halts startup.
+- **PowerShell Environment Variable Configuration Commands:**
+  ```powershell
+  # 1. Set for the current PowerShell session:
+  $env:JWT_SECRET = "civnexa_super_secure_production_secret_key_at_least_256_bits_2026_x9k2"
 
-- **`CivnexaUserPrincipal.java`** (`com.civnexa.security`):
-  - Implements Spring Security `UserDetails`.
-  - Adapts the `User` JPA entity for security context access.
-  - Authorities: `ROLE_<ROLE>` (e.g. `ROLE_STUDENT`, `ROLE_SUPER_ADMIN`).
-  - Enabled status: dynamically bound to `STATUS_ACTIVE.equalsIgnoreCase(status)`.
+  # 2. Persist for the Current User environment:
+  [System.Environment]::SetEnvironmentVariable('JWT_SECRET', 'civnexa_super_secure_production_secret_key_at_least_256_bits_2026_x9k2', 'User')
 
-- **`JwtAuthenticationFilter.java`** (`com.civnexa.security.jwt`):
-  - Extends `OncePerRequestFilter`.
-  - Extracts Bearer token from `Authorization` header.
-  - Validates token signature, structure, and expiration.
-  - **Authoritative Database Verification:** Looks up the `User` entity by `userReference` in `UserRepository`. Only populates `SecurityContextHolder` if `user.getStatus()` is strictly `ACTIVE`. If status is `PENDING_VERIFICATION`, `SUSPENDED`, or `INACTIVE`, or if the user no longer exists in the database, the authentication context is cleared and access to protected resources is denied.
+  # 3. Persist for the System / Machine environment (Admin required):
+  [System.Environment]::SetEnvironmentVariable('JWT_SECRET', 'civnexa_super_secure_production_secret_key_at_least_256_bits_2026_x9k2', 'Machine')
+  ```
 
-- **`JwtAuthenticationEntryPoint.java`** (`com.civnexa.security.jwt`):
-  - Handles unauthenticated requests to protected resources.
-  - Emits HTTP 401 Unauthorized with standard JSON payload:
-    ```json
-    {
-      "success": false,
-      "message": "Unauthorized: Full authentication is required to access this resource",
-      "timestamp": "2026-10-30T19:20:00.000Z"
-    }
-    ```
+### 2.3 JWT Validation Hardening
 
-- **`JwtAccessDeniedHandler.java`** (`com.civnexa.security.jwt`):
-  - Handles authenticated requests lacking sufficient role privileges.
-  - Emits HTTP 403 Forbidden with standard JSON payload:
-    ```json
-    {
-      "success": false,
-      "message": "Access denied: You lack required permissions to access this resource",
-      "timestamp": "2026-10-30T19:20:00.000Z"
-    }
-    ```
+- Explicitly rejects `alg:none` (unsecured tokens) without crashing.
+- Explicitly rejects algorithm substitution (e.g. `HS512` or `RS256` when `HS256` is expected).
+- Enforces strict issuer verification (`CIVNEXA`).
+- Validates mandatory claims (`sub`, `iss`, `jti`, `iat`, `exp`, `role`, `userRef`).
 
-- **`SecurityConfig.java`** (`com.civnexa.config`):
-  - Configures Spring Security 6 with `@EnableMethodSecurity`.
-  - CSRF disabled (stateless API).
-  - Session creation policy: `SessionCreationPolicy.STATELESS`.
-  - Headers: `contentTypeOptions` (`nosniff`), `frameOptions` (`DENY`).
-  - Restrictive CORS: uses `CorsConfigurationSource` with configured institutional origins.
-  - Public routes: `/ping`, `/health`, `/health/**`, `/auth/login`, `/auth/register` (and `/api/v1/*` aliases), `/v3/api-docs/**`, `/swagger-ui/**`.
-  - Protected routes: `/auth/me` and all other business endpoints require authentication.
+### 2.4 CORS and Security Filter Chain
 
-### 2.3 Institutional Role Architecture
-
-- **`SecurityRoles.java`** (`com.civnexa.security`):
-  Standard constants representing the 8 institutional roles:
-  1. `ROLE_SUPER_ADMIN` / `SUPER_ADMIN`
-  2. `ROLE_DEAN` / `DEAN`
-  3. `ROLE_HOD` / `HOD`
-  4. `ROLE_FACULTY` / `FACULTY`
-  5. `ROLE_STAFF` / `STAFF`
-  6. `ROLE_COORDINATOR` / `COORDINATOR`
-  7. `ROLE_COMMITTEE_MEMBER` / `COMMITTEE_MEMBER`
-  8. `ROLE_STUDENT` / `STUDENT`
-
-### 2.4 Authentication Endpoints (`AuthController.java`)
-
-- **`POST /api/v1/auth/login` (and `/auth/login`):**
-  - Accepts `@Valid LoginRequest` (email and password).
-  - Authenticates user via `AuthService.verifyUserCredentials(request)`.
-  - Generates 15-minute signed JWT access token.
-  - Returns `AuthResponse` containing `accessToken`, `tokenType: "Bearer"`, `expiresInMs: 900000`, and safe `UserResponse`.
-  - Unsuccessful attempts (wrong password, non-existent user, suspended user, pending user) all return uniform HTTP 401 Unauthorized with generic message (`"Invalid email or password"`).
-
-- **`POST /api/v1/auth/register` (and `/auth/register`):**
-  - Governed by property `civnexa.auth.public-registration-enabled: false`.
-  - When disabled (default): returns HTTP 403 Forbidden with `"Public student registration is currently disabled. Please contact institutional administration."`.
-  - When enabled: creates student account with `status = "PENDING_VERIFICATION"`. Does **not** issue a JWT token. Returns HTTP 201 Created with `UserResponse`.
-
-- **`GET /api/v1/auth/me` (and `/auth/me`):**
-  - Protected endpoint requiring Bearer JWT.
-  - Resolves `CivnexaUserPrincipal` from `SecurityContext`.
-  - Returns HTTP 200 OK with authenticated user profile (`UserResponse`).
-  - Missing, invalid, expired, or suspended account tokens return HTTP 401 Unauthorized.
+- `CorsConfig.java` parses explicit comma-separated allowed origins from `civnexa.cors.allowed-origins` (`http://localhost:5173,http://localhost:5174,http://localhost:3000`).
+- No wildcard (`*`) allowed origins when credentials are enabled.
+- Preflight `OPTIONS` requests from allowed origins receive `Access-Control-Allow-Origin`, `Access-Control-Allow-Credentials: true`, and allowed methods/headers with HTTP 200 OK.
+- Requests from untrusted origins are denied CORS access.
 
 ---
 
-## 3. Comprehensive Verification & Test Audit
+## 3. Dependency & Configuration Audit
 
-### 3.1 Test Execution Summary
+Exact dependency versions resolved from the Maven dependency tree (`mvn dependency:list`):
 
-The complete backend test suite was executed using `mvnw test` with zero failures and zero errors across all 10 test suites:
+| Dependency Group & Artifact | Resolved Version | Scope | Role in CIVNEXA |
+| :--- | :---: | :---: | :--- |
+| `org.springframework.boot:spring-boot` | **4.1.2** | Compile | Core application framework |
+| `org.springframework.security:spring-security-core` | **7.1.2** | Compile | Authentication & RBAC engine (Spring Security 7) |
+| `org.springframework.security:spring-security-web` | **7.1.2** | Compile | Web filter chain & HTTP security |
+| `org.springframework.security:spring-security-config` | **7.1.2** | Compile | DSL configuration & method security |
+| `io.jsonwebtoken:jjwt-api` | **0.12.6** | Compile | Modern JWT API |
+| `io.jsonwebtoken:jjwt-impl` | **0.12.6** | Runtime | JJWT implementation engine |
+| `io.jsonwebtoken:jjwt-jackson` | **0.12.6** | Runtime | JJWT JSON serializer |
+| `org.hibernate.orm:hibernate-core` | **7.4.13.Final** | Compile | JPA ORM persistence engine |
+| `com.mysql:mysql-connector-j` | **9.7.0** | Runtime | MySQL JDBC database driver |
+| `com.h2database:h2` | **2.4.240** | Test | Hermetic in-memory test database |
 
-| # | Test Suite | Test Class | Package | Executions | Failures | Errors | Status |
-| :-: | :--- | :--- | :--- | :-: | :-: | :-: | :-: |
-| 1 | Application Context | `CivnexaBackendApplicationTests` | `com.civnexa` | 1 | 0 | 0 | **PASS** |
+> [!NOTE]
+> The previous report noted "Spring Security 6" based on initial starter naming conventions. The exact resolved version is **Spring Security 7.1.2** (running under Spring Boot 4.1.2). The documentation and `pom.xml` comments have been updated accordingly without modifying the dependency tree.
+
+---
+
+## 4. Empirical Test Execution Audit
+
+Full clean test suite execution (`mvnw test`) verified **102 tests across 10 test suites** with **0 failures, 0 errors, and 0 skipped**:
+
+| # | Test Suite | Class Name | Location | Executions | Failures | Errors | Status |
+| :-: | :--- | :--- | :--- | :---: | :---: | :---: | :---: |
+| 1 | Application Lifecycle | `CivnexaBackendApplicationTests` | `com.civnexa` | 1 | 0 | 0 | **PASS** |
 | 2 | System Health API | `HealthControllerTests` | `com.civnexa.controller` | 4 | 0 | 0 | **PASS** |
-| 3 | Authentication API | `AuthControllerTests` | `com.civnexa.controller` | 14 | 0 | 0 | **PASS** |
-| 4 | Repository Layer | `RepositoryIntegrationTests` | `com.civnexa.repository` | 12 | 0 | 0 | **PASS** |
-| 5 | Password Security | `PasswordValidatorTests` | `com.civnexa.security` | 13 | 0 | 0 | **PASS** |
-| 6 | Role Authorization | `RoleAuthorizationTests` | `com.civnexa.security` | 9 | 0 | 0 | **PASS** |
-| 7 | JWT Token Engine | `JwtTokenProviderTests` | `com.civnexa.security.jwt` | 9 | 0 | 0 | **PASS** |
-| 8 | JWT Filter & DB Check | `JwtAuthenticationFilterTests` | `com.civnexa.security.jwt` | 8 | 0 | 0 | **PASS** |
-| 9 | Security Handlers | `JwtSecurityHandlersTests` | `com.civnexa.security.jwt` | 2 | 0 | 0 | **PASS** |
+| 3 | Auth Controller & CORS | `AuthControllerTests` | `com.civnexa.controller` | 17 | 0 | 0 | **PASS** |
+| 4 | Data Repository Layer | `RepositoryIntegrationTests` | `com.civnexa.repository` | 12 | 0 | 0 | **PASS** |
+| 5 | Password Security Policy | `PasswordValidatorTests` | `com.civnexa.security` | 13 | 0 | 0 | **PASS** |
+| 6 | Institutional RBAC (8 Roles)| `RoleAuthorizationTests` | `com.civnexa.security` | 9 | 0 | 0 | **PASS** |
+| 7 | JWT Engine & Algorithms | `JwtTokenProviderTests` | `com.civnexa.security.jwt` | 11 | 0 | 0 | **PASS** |
+| 8 | JWT Filter & DB Authority | `JwtAuthenticationFilterTests` | `com.civnexa.security.jwt` | 9 | 0 | 0 | **PASS** |
+| 9 | Security Error Handlers | `JwtSecurityHandlersTests` | `com.civnexa.security.jwt` | 2 | 0 | 0 | **PASS** |
 | 10 | Credential Services | `AuthServiceIntegrationTests` | `com.civnexa.service` | 24 | 0 | 0 | **PASS** |
-| **Total** | **Full Backend Suite** | **10 Test Classes** | — | **96** | **0** | **0** | **PASS** |
+| **Total** | **Full Backend Test Suite** | **10 Test Classes** | — | **102** | **0** | **0** | **PASS** |
 
-### 3.2 Breakdown of Newly Implemented Test Suites
+### 4.1 Key Security Test Additions
 
-#### `JwtTokenProviderTests` (9 Tests)
-- `testSuccessfulTokenGeneration`: Validates token format (3 parts), claims (`sub`, `iss`, `jti`, `iat`, `exp`, `role`, `userRef`), and signature.
-- `testValidTokenParsing`: Confirms claims extraction matches input user.
-- `testExpiredTokenRejection`: Asserts expired tokens return `false` on validate and throw `ExpiredJwtException` on parse.
-- `testInvalidSignatureRejection`: Confirms tokens signed with different cryptographic keys fail validation.
-- `testMalformedTokenRejection`: Validates handling of non-JWT strings, null, and empty inputs.
-- `testInvalidIssuerRejection`: Asserts tokens from untrusted issuers are rejected.
-- `testMissingRequiredClaimsRejection`: Confirms tokens missing mandatory claims (e.g. role) are rejected.
-- `testStartupValidationRejectsShortSecret`: Asserts secrets $< 256$ bits throw `IllegalStateException`.
-- `testStartupValidationRejectsBlankSecret`: Asserts null or whitespace secrets throw `IllegalStateException`.
-
-#### `JwtAuthenticationFilterTests` (8 Tests)
-- `testRequestWithoutAuthorizationHeader`: Passes through without setting authentication.
-- `testRequestWithNonBearerHeader`: Ignores non-Bearer headers.
-- `testRequestWithInvalidJwt`: Passes through without setting authentication.
-- `testValidJwtWithActiveUserAuthenticates`: Populates `SecurityContext` with `CivnexaUserPrincipal` and `ROLE_STUDENT`.
-- `testValidJwtWithPendingVerificationUserRejected`: Authoritative DB check blocks `PENDING_VERIFICATION` user.
-- `testValidJwtWithSuspendedUserRejected`: Authoritative DB check blocks `SUSPENDED` user.
-- `testValidJwtWithInactiveUserRejected`: Authoritative DB check blocks `INACTIVE` user.
-- `testValidJwtWithNonExistentUserRejected`: Authoritative DB check blocks deleted/non-existent user.
-
-#### `JwtSecurityHandlersTests` (2 Tests)
-- `testAuthenticationEntryPointReturns401`: Validates HTTP 401 and JSON error format for unauthenticated requests.
-- `testAccessDeniedHandlerReturns403`: Validates HTTP 403 and JSON error format for unauthorized requests.
-
-#### `AuthControllerTests` (14 Tests)
-- `testSuccessfulLogin`: HTTP 200 with JWT, 15m expiration, Bearer tokenType, user details.
-- `testLoginWithIncorrectPassword`: HTTP 401 with generic error message.
-- `testLoginWithUnknownEmail`: HTTP 401 with generic error message.
-- `testLoginWithPendingVerificationAccount`: HTTP 401 with generic error message.
-- `testLoginWithSuspendedAccount`: HTTP 401 with generic error message.
-- `testLoginWithMissingFields`: HTTP 400 when email or password is missing.
-- `testRegisterWhenPublicRegistrationDisabled`: HTTP 403 when public registration flag is false.
-- `testRegisterWhenPublicRegistrationEnabled`: HTTP 201 with `PENDING_VERIFICATION` status and no token.
-- `testRegisterPrivilegedRoleRejected`: HTTP 400 when attempting to register as DEAN.
-- `testGetMeWithValidToken`: HTTP 200 with user profile for valid Bearer token.
-- `testGetMeWithoutToken`: HTTP 401 when Authorization header is missing.
-- `testGetMeWithMalformedToken`: HTTP 401 for malformed Bearer token.
-- `testGetMeWithExpiredToken`: HTTP 401 for expired Bearer token.
-- `testGetMeWithSuspendedAccountToken`: HTTP 401 when active user is subsequently suspended in DB.
-
-#### `RoleAuthorizationTests` (9 Tests)
-- `testSuperAdminAccess`: Confirms `ROLE_SUPER_ADMIN` can access admin and academic leadership methods.
-- `testDeanAccess`: Confirms `ROLE_DEAN` can access dean and leadership methods, denied super admin.
-- `testHodAccess`: Confirms `ROLE_HOD` can access HOD and leadership methods, denied dean.
-- `testFacultyAccess`: Confirms `ROLE_FACULTY` can access faculty methods, denied leadership and HOD.
-- `testStaffAccess`: Confirms `ROLE_STAFF` can access staff methods, denied faculty.
-- `testCoordinatorAccess`: Confirms `ROLE_COORDINATOR` can access coordinator methods, denied dean.
-- `testCommitteeMemberAccess`: Confirms `ROLE_COMMITTEE_MEMBER` can access committee methods, denied super admin.
-- `testStudentAccess`: Confirms `ROLE_STUDENT` can access student methods, denied all administrative/staff/leadership methods.
-- `testUnauthenticatedCallFails`: Confirms unauthenticated calls to secured methods fail.
+1. **`testAuthoritativeDbRoleOverridesJwtRoleClaim` (`JwtAuthenticationFilterTests`):**
+   Confirms that when a user's role is updated to `FACULTY` in the database, a token carrying a legacy `STUDENT` claim grants `ROLE_FACULTY` and denies `ROLE_STUDENT`.
+2. **`testAuthoritativeDbRoleVerificationOnGetMe` (`AuthControllerTests`):**
+   End-to-end MockMvc verification confirming that updating user role in DB immediately updates the profile returned by `/auth/me`.
+3. **`testAlgorithmNoneTokenRejected` (`JwtTokenProviderTests`):**
+   Rejects unsecured tokens with `alg:none` (with and without trailing period).
+4. **`testUnsupportedAlgorithmRejected` (`JwtTokenProviderTests`):**
+   Rejects tokens signed with `HS512` when `HS256` is configured.
+5. **`testCorsPreflightOptionsRequestAllowed` & `testCorsDisallowedOriginRejected` (`AuthControllerTests`):**
+   Confirms CORS preflight behavior for allowed and disallowed origins.
 
 ---
 
-## 4. Packaging Verification
+## 5. Packaging Verification
 
-Application packaging was executed using `mvnw package -DskipTests`:
-
-- **Archive Produced:** `backend/target/civnexa-backend-1.0.0-SNAPSHOT.jar`
-- **Archive Size:** ~50.2 MB (self-contained executable fat JAR with embedded Tomcat, Spring Boot 4.1.2 loaders, and nested dependencies in `BOOT-INF/`)
-- **Status:** `BUILD SUCCESS`
+- **Command:** `.\mvnw.cmd package -DskipTests`
+- **Output Artifact:** `backend/target/civnexa-backend-1.0.0-SNAPSHOT.jar`
+- **Build Status:** `BUILD SUCCESS` (Spring Boot executable fat JAR repackaged with embedded dependencies).
 
 ---
 
-## 5. Git Milestone Commit Log
+## 6. Git Checkpoint History
 
-All changes for Phase BE-1.3-C were committed in structured milestones and pushed to `origin/main`:
+All BE-1.3-C commits exist on `origin/main` without history rewrite or force push:
 
-| Commit Hash | Commit Type | Commit Message | Files Changed |
-| :--- | :--- | :--- | :--- |
-| `56bf65f` | `feat(security)` | implement JWT token generation and validation | `JwtProperties.java`, `JwtTokenProvider.java`, `JwtTokenProviderTests.java` |
-| `552e791` | `feat(security)` | configure stateless Spring Security and JWT filter | `SecurityRoles.java`, `CivnexaUserPrincipal.java`, `JwtAuthenticationEntryPoint.java`, `JwtAccessDeniedHandler.java`, `JwtAuthenticationFilter.java`, `SecurityConfig.java`, `HealthControllerTests.java`, `JwtAuthenticationFilterTests.java`, `JwtSecurityHandlersTests.java` |
-| `8450126` | `feat(auth)` | expose secured authentication endpoints and role authorization | `application.yml`, `application-test.yml`, `AuthController.java`, `AuthControllerTests.java`, `RoleAuthorizationTests.java` |
+| Commit Hash | Commit Type | Description |
+| :--- | :--- | :--- |
+| `56bf65f` | `feat(security)` | implement JWT token generation and validation |
+| `552e791` | `feat(security)` | configure stateless Spring Security and JWT filter |
+| `8450126` | `feat(auth)` | expose secured authentication endpoints and role authorization |
+| `11c5dab` | `docs(security)` | document BE-1.3-C JWT security implementation and verification |
+| `bc076e5` | `feat(security)` | harden JWT validation, secret resolution, and authoritative DB role mapping |
 
 ---
 
-## 6. Gate C Acceptance Checklist
+## 7. Limitations & Transition to Gate C
 
-- [x] **Stateless JWT Engine:** Implemented with HS256, 15m expiration, `CIVNEXA` issuer, UUID `jti`, and $\ge 256$-bit secret startup check.
-- [x] **Authoritative DB Status Check:** Validated in `JwtAuthenticationFilter` — inactive, suspended, or pending verification users are rejected.
-- [x] **8 Institutional Roles:** Implemented and tested via method security (`@EnableMethodSecurity`).
-- [x] **REST Endpoints:** `/auth/login`, `/auth/register` (governed by feature flag), and `/auth/me` implemented and tested.
-- [x] **Zero Hardcoded Secrets / Demo Users:** Application configurations use environment variable overrides with secure fallbacks; no demo accounts persisted.
-- [x] **Database Migration Integrity:** Flyway migrations V1, V2, and V3 preserved without modification.
-- [x] **Full Regression Suite:** 96 of 96 tests passing.
-- [x] **Packaging:** Executable JAR successfully verified.
-- [x] **Remote Synchronization:** All commits pushed to `origin/main`.
+- **Institutional Email Verification & Roster Ingestion:** Not yet implemented; planned for BE-1.3-D / future phases. Self-registered students correctly remain in `PENDING_VERIFICATION` status.
+- **Account Lifecycle:** Maintained as `PENDING_VERIFICATION`, `ACTIVE`, `INACTIVE`, and `SUSPENDED`.
+- **Readiness:** All Gate C requirements for BE-1.3-C are fully satisfied. Ready for BE-1.3-D (Integration & Verification) planning.
