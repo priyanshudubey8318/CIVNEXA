@@ -54,6 +54,9 @@ public class AuthControllerTests {
     @Autowired
     private AuthController authController;
 
+    @Autowired
+    private com.civnexa.security.LoginRateLimiter loginRateLimiter;
+
     private User activeStudent;
     private User pendingStudent;
     private User suspendedStudent;
@@ -62,6 +65,8 @@ public class AuthControllerTests {
     @BeforeEach
     void setUp() {
         authController.setPublicRegistrationEnabled(false);
+        loginRateLimiter.resetAttempts("127.0.0.1");
+        loginRateLimiter.resetAttempts("unknown");
 
         department = new Department();
         department.setCode("CSE");
@@ -343,5 +348,29 @@ public class AuthControllerTests {
                         .header("Origin", "http://malicious-external-site.com")
                         .header("Access-Control-Request-Method", "POST"))
                 .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
+    }
+
+    @Test
+    @DisplayName("POST /auth/login returns HTTP 429 Too Many Requests when rate limit threshold is exceeded")
+    void testRateLimitExceededReturns429() throws Exception {
+        String json = "{\"email\":\"aarav.mehta@institution.edu\",\"password\":\"WrongPassword123!\"}";
+
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(post("/auth/login")
+                            .with(request -> { request.setRemoteAddr("192.168.10.99"); return request; })
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(json))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        mockMvc.perform(post("/auth/login")
+                        .with(request -> { request.setRemoteAddr("192.168.10.99"); return request; })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.success", is(false)))
+                .andExpect(jsonPath("$.message", containsString("Too many login attempts")));
+
+        loginRateLimiter.resetAttempts("192.168.10.99");
     }
 }

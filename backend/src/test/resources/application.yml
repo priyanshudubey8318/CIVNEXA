@@ -31,6 +31,12 @@ civnexa:
     issuer: CIVNEXA
   auth:
     public-registration-enabled: false
+  security:
+    rate-limit:
+      login:
+        enabled: true
+        max-attempts: 5
+        window-seconds: 60
   cors:
     allowed-origins: http://localhost:5173,http://localhost:5174
     allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS

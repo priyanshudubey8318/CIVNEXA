@@ -9,8 +9,10 @@ import com.civnexa.entity.User;
 import com.civnexa.exception.ApiException;
 import com.civnexa.repository.UserRepository;
 import com.civnexa.security.CivnexaUserPrincipal;
+import com.civnexa.security.LoginRateLimiter;
 import com.civnexa.security.jwt.JwtTokenProvider;
 import com.civnexa.service.AuthService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,27 +40,44 @@ public class AuthController {
     private final AuthService authService;
     private final JwtTokenProvider jwtTokenProvider;
     private final UserRepository userRepository;
+    private final LoginRateLimiter loginRateLimiter;
 
     @Value("${civnexa.auth.public-registration-enabled:false}")
     private boolean publicRegistrationEnabled;
 
     public AuthController(AuthService authService,
                           JwtTokenProvider jwtTokenProvider,
-                          UserRepository userRepository) {
+                          UserRepository userRepository,
+                          LoginRateLimiter loginRateLimiter) {
         this.authService = authService;
         this.jwtTokenProvider = jwtTokenProvider;
         this.userRepository = userRepository;
+        this.loginRateLimiter = loginRateLimiter;
     }
 
     /**
      * Authenticates active users via email and password, returning a signed JWT access token.
+     * Protected against brute-force attacks via client IP rate limiting.
      *
      * @param request Login credentials
+     * @param httpRequest Incoming HTTP servlet request for client IP evaluation
      * @return AuthResponse containing signed JWT, expiration, and user details
      */
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request) {
-        User user = authService.verifyUserCredentials(request);
+    public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request,
+                                                           HttpServletRequest httpRequest) {
+        String clientIp = LoginRateLimiter.resolveClientIp(httpRequest);
+        loginRateLimiter.checkRateLimit(clientIp);
+
+        User user;
+        try {
+            user = authService.verifyUserCredentials(request);
+            loginRateLimiter.resetAttempts(clientIp);
+        } catch (Exception ex) {
+            loginRateLimiter.recordAttempt(clientIp);
+            throw ex;
+        }
+
         String token = jwtTokenProvider.generateToken(user);
         long expiresInMs = jwtTokenProvider.getExpirationMs();
 
