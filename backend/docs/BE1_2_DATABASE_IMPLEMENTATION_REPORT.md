@@ -31,7 +31,8 @@ Development followed a strict commit-per-milestone paradigm pushed directly to `
 | **Checkpoint C** | `6c6e5b9` | `feat(database): configure Flyway migrations and MySQL baseline` | Flyway V1 DDL migration script (`V1__create_initial_schema.sql`), MySQL 8 and H2 datasource configuration, and Hibernate schema validation (`validate`). |
 | **Checkpoint D** | `35386e5` | `test(database): verify schema migrations and entity persistence` | Initial integration test suite (`RepositoryIntegrationTests.java`), Department constructor ergonomics, frontend regression pass, and implementation report. |
 | **Checkpoint E** | `0aebd32` | `feat(database): add user import tracking schema` | Bulk user provisioning schema: `ImportJob` and `ImportRowResult` entities, 4 enums (`ImportStatus`, `ImportType`, `ImportFileFormat`, `RowProcessingStatus`), 2 repositories, `V2__add_user_import_tracking.sql` migration, and import persistence tests. |
-| **Checkpoint F** | *(Current)* | `docs(database): finalize BE-1.2 implementation report and audit closeout` | Final audit report, data integrity boundary analysis, and BE-1.2 phase closeout. |
+| **Checkpoint F** | `0f314ba` | `docs(database): finalize BE-1.2 implementation report and audit closeout` | Initial audit report, data integrity boundary analysis, and BE-1.2 phase closeout. |
+| **Checkpoint G** | *(Current)* | `docs(database): complete BE-1.2 final documentation refinements` | Refined documentation accuracy regarding timestamps, checksum storage vs verification, import format tracking vs parsing, and Flyway baseline semantics. |
 
 ---
 
@@ -114,18 +115,23 @@ The database model natively supports account provisioning for all eight institut
 - `roll_number` & `enrollment_number`: Institutional identifiers with unique index on roll number.
 - `course`, `semester`, `section`, `cgpa`: Academic standing attributes (`cgpa` stored as `DECIMAL(4,2)`).
 - `status`: Lifecycle status (`VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'`).
-- `created_at` & `updated_at`: Immutable creation and update timestamps.
+- `created_at` & `updated_at` Timestamp Lifecycle:
+  - `created_at`: Explicitly configured with `updatable = false` across entities and initialized via `@PrePersist` and database default (`DEFAULT CURRENT_TIMESTAMP`). Once an entity is created, this timestamp remains strictly immutable.
+  - `updated_at`: Configured with JPA `@PreUpdate` lifecycle interceptors and database defaults (`DEFAULT CURRENT_TIMESTAMP`). It dynamically updates to the current system instant whenever a record is modified.
 - **Zero Seeded Accounts:** No demo users, sample accounts, or hardcoded passwords have been seeded into the database.
+- **Scope Clarification:** Phase BE-1.2 delivers only the database schema, entity model, and repository persistence. Real user registration workflows—including password hashing services, credential validation, and registration REST endpoints—will be implemented in later authorized phases (starting with BE-1.3).
 
 ### 4.2 Bulk User Import Tracking Support
 CIVNEXA includes first-class schema support for administrative user provisioning via uploaded rosters:
-- **Supported Formats:** Excel (`.xlsx` / `XLSX`), Comma-Separated Values (`.csv` / `CSV`), and JavaScript Object Notation (`.json` / `JSON`).
+- **Scope & Meaning of Format Support:**
+  - The schema provides full database tracking and format identification for Excel (`.xlsx` / `XLSX`), Comma-Separated Values (`.csv` / `CSV`), and JavaScript Object Notation (`.json` / `JSON`) through the `file_format` column and `ImportFileFormat` enum.
+  - **Important Clarification:** In this phase, this support strictly encompasses database tracking structures, metadata storage, row-level status persistence, and format identification. Completed file parsing (e.g. streaming spreadsheet workbooks, CSV tokenizing, JSON deserialization) and automated user entity insertion have **not** been implemented in BE-1.2 and will be built in subsequent authorized service phases.
 - **`ImportJob` Attributes:**
   - `job_reference`: Unique tracking reference (`VARCHAR(50) NOT NULL UNIQUE`, e.g. `IMP-2026-0001`).
   - `initiated_by_id`: Administrator reference (`users.id`) configured with `ON DELETE SET NULL` so removing an administrator account never destroys historical import audit trails.
   - `import_type`: Roster classification (`STUDENT_ROSTER`, `FACULTY_ROSTER`, `STAFF_ROSTER`, `GENERAL_USERS`).
   - `file_name`, `file_format`, `file_size_bytes`: Uploaded payload metadata.
-  - `file_checksum`: SHA-256 cryptographic digest of the source file.
+  - `file_checksum`: Hexadecimal SHA-256 cryptographic digest of the source file.
   - `status`: Batch lifecycle state (`PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`, `PARTIALLY_COMPLETED`).
   - `total_records`, `processed_records`, `failed_records`, `skipped_records`: Granular processing counters.
   - `summary`: Factual error and throughput summary narrative.
@@ -136,6 +142,7 @@ CIVNEXA includes first-class schema support for administrative user provisioning
   - `status`: Row processing result (`SUCCESS`, `FAILED`, `SKIPPED`).
   - `error_message` & `error_code`: Diagnostic failure reason (e.g. `DUPLICATE_ROLL_NUMBER`, `EMPTY_RECORD`).
 - **Security Control:** Plaintext passwords, tokens, or raw credential strings are never written to import tracking tables.
+- **Scope Clarification:** Real bulk import execution (multipart file upload endpoints, batch background processing, row-by-row validation, and user creation) will be implemented in subsequent authorized phases.
 
 ---
 
@@ -147,22 +154,28 @@ To maintain strict compliance and legal defensibility, guarantees are categorize
 | :--- | :--- | :--- | :--- |
 | **Public Key & Reference Uniqueness** | Database-Enforced | `UNIQUE` constraints and indexes on `case_number`, `user_reference`, `email`, `roll_number`, `evidence_reference`, `hearing_number`, `appeal_number`, `referral_number`, `event_uuid`, `job_reference`, `department.code`, and composite `(hearing_id, member_id)`. | Enforced unconditionally by RDBMS engine. |
 | **Referential Integrity & Cascades** | Database-Enforced | Foreign keys with `ON DELETE CASCADE` for dependent notes/activities/sessions/row-results, and `ON DELETE SET NULL` for referential actors, preventing orphaned child records while preserving audit history. | Enforced unconditionally by RDBMS engine. |
+| **Timestamp Immutability (`created_at`)** | Database & JPA Enforced | Marked with `updatable = false` in JPA entity annotations and initialized via `@PrePersist` and RDBMS default `DEFAULT CURRENT_TIMESTAMP`. | Once written, cannot be modified via JPA update queries. |
 | **Whistleblower Protection** | Application-Level | `is_anonymous = true` flag on `cases` allows anonymous grievances without linking a reporter or student identity. | In upcoming API phases (BE-1.3+), serialization layers will redact reporter identities for non-administrative roles. |
 | **Counseling Clinical Isolation** | Application-Level | Protected `confidential_notes` column in `counseling_referrals` is excluded from general case queries, case timelines, and defensive `toString()` representations. | Database-level table partitioning or row-level security is not applied; access control is maintained at the service and DTO projection layer. |
-| **Evidence SHA-256 Integrity** | Application-Level | `sha256_checksum` in `evidence_items` and `file_checksum` in `import_jobs` store 64-character hex digests computed at upload. | Checksum verification is executed in software (Web Crypto frontend, Java `MessageDigest` backend); the database stores and indexes the digest. |
+| **Evidence & Import Checksum Storage** | Database-Level Storage | Dedicated indexed columns (`sha256_checksum` in `evidence_items`, `file_checksum` in `import_jobs`) store 64-character hexadecimal SHA-256 digests. | **Storage vs Verification:** The database *persists* and indexes the digest. Actual cryptographic *generation* (streaming hash calculation via Java `MessageDigest` or Web Crypto) and integrity *verification* during file uploads will be executed at the application service tier in subsequent phases. |
 | **Append-Only Immutability** | Application-Level | `AuditLog`, `CaseActivity`, and `EvidenceCustodyLog` entities define `updatable = false` on timestamps and provide no mutating API methods. | At the RDBMS tier, table `UPDATE` and `DELETE` privileges will be restricted at the database user permission level in production environments. |
 
 ---
 
 ## 6. Migration Compatibility & Automated Verification
 
-### 6.1 Database Migration Compatibility
+### 6.1 Database Migration Compatibility & Baseline Semantics
 - `spring.flyway.enabled=true`
 - `spring.flyway.baseline-on-migrate=true`
 - `spring.flyway.locations=classpath:db/migration`
 - `spring.jpa.hibernate.ddl-auto=validate`
 
-Flyway applies `V1__create_initial_schema.sql` (14 tables) and `V2__add_user_import_tracking.sql` (2 tables) sequentially. Hibernate then strictly verifies that all 16 JPA entities, properties, column types, and constraints match the database schema with zero discrepancies.
+**Intended Behavior of `baseline-on-migrate=true`:**
+- **Fresh Databases (e.g. test environment, fresh staging/prod):** Flyway inspects the schema, finds no existing tables, creates the `flyway_schema_history` table, and cleanly applies all versioned migrations sequentially:
+  1. `V1__create_initial_schema.sql` (Initial 14 tables)
+  2. `V2__add_user_import_tracking.sql` (Import jobs and row results tables)
+- **Existing Non-Empty Databases (Pre-Flyway):** For databases that already contain tables created prior to Flyway introduction, `baseline-on-migrate=true` instructs Flyway to create the history table and baseline existing schema rather than failing on startup with `Found non-empty schema(s) without schema history table`.
+- **Validation:** Following migration, Hibernate strictly verifies that all 16 JPA entities, properties, column types, and constraints match the migrated schema with zero discrepancies.
 
 ### 6.2 Database Environment & Testing Honesty
 - **Verified Runtime:** **H2 Database (version 2.4.240)** configured with `MODE=MySQL` was utilized for all automated integration tests, schema migrations, and Hibernate validation.
@@ -217,5 +230,5 @@ Flyway applies `V1__create_initial_schema.sql` (14 tables) and `V2__add_user_imp
 
 Phase BE-1.2 is officially closed out:
 - All database schema tables, JPA entities, repositories, and Flyway migrations are complete and pushed to GitHub.
-- **No business REST endpoints, authentication controllers, login services, or JWT generation logic have been implemented.**
+- **No business REST endpoints, authentication controllers, login services, user registration services, bulk file upload handlers, or JWT generation logic have been implemented.**
 - The project is ready for **Phase BE-1.3 (Authentication, JWT Security & User Credential Services)** upon explicit authorization.
