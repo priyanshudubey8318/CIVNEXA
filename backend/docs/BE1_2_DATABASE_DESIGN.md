@@ -382,6 +382,51 @@ Append-only system-level audit trail for regulatory compliance.
 
 ---
 
+### 3.15 `import_jobs` (Bulk User Provisioning Jobs)
+Tracks administrative bulk user upload jobs across XLSX, CSV, and JSON formats.
+
+| Column | Type | Nullable | Constraints & Description |
+| :--- | :--- | :--- | :--- |
+| `id` | `BIGINT` | NO | Primary Key, `AUTO_INCREMENT` |
+| `job_reference` | `VARCHAR(50)` | NO | Unique import identifier (e.g. `IMP-2026-0001`) |
+| `initiated_by_id` | `BIGINT` | YES | FK to `users.id` (`ON DELETE SET NULL`) |
+| `import_type` | `VARCHAR(40)` | NO | Enum: `STUDENT_ROSTER`, `FACULTY_ROSTER`, `STAFF_ROSTER`, `GENERAL_USERS` |
+| `file_name` | `VARCHAR(255)` | NO | Original file name uploaded |
+| `file_format` | `VARCHAR(20)` | NO | Enum: `XLSX`, `CSV`, `JSON` |
+| `file_size_bytes` | `BIGINT` | NO | File size in bytes |
+| `file_checksum` | `VARCHAR(64)` | YES | SHA-256 cryptographic digest of uploaded file |
+| `status` | `VARCHAR(30)` | NO | Default `'PENDING'`. Enum: `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`, `PARTIALLY_COMPLETED` |
+| `total_records` | `INT` | NO | Total records parsed |
+| `processed_records` | `INT` | NO | Successfully provisioned records count |
+| `failed_records` | `INT` | NO | Failed records count |
+| `skipped_records` | `INT` | NO | Skipped records count (e.g. header rows or blank lines) |
+| `summary` | `TEXT` | YES | Processing outcome or error overview |
+| `created_at` | `TIMESTAMP` | NO | Job submission timestamp |
+| `started_at` | `TIMESTAMP` | YES | Batch processing start timestamp |
+| `completed_at` | `TIMESTAMP` | YES | Batch completion timestamp |
+
+* **Indexes:** `idx_import_job_ref (job_reference)` (Unique), `idx_import_job_admin (initiated_by_id)`, `idx_import_job_status (status)`, `idx_import_job_created (created_at)`.
+
+---
+
+### 3.16 `import_row_results` (Row-Level Diagnostics & Errors)
+Maintains row-by-row processing audit and validation error diagnostics.
+
+| Column | Type | Nullable | Constraints & Description |
+| :--- | :--- | :--- | :--- |
+| `id` | `BIGINT` | NO | Primary Key, `AUTO_INCREMENT` |
+| `job_id` | `BIGINT` | NO | FK to `import_jobs.id` (`ON DELETE CASCADE`) |
+| `row_number` | `INT` | NO | 1-based source file line or row index |
+| `record_identifier` | `VARCHAR(120)` | YES | User identifier (email, roll number, or employee ID) |
+| `status` | `VARCHAR(20)` | NO | Enum: `SUCCESS`, `FAILED`, `SKIPPED` |
+| `error_message` | `TEXT` | YES | Detailed validation or parsing failure message |
+| `error_code` | `VARCHAR(50)` | YES | Machine-readable failure reason (e.g. `DUPLICATE_EMAIL`, `INVALID_ROLE`) |
+| `processed_at` | `TIMESTAMP` | NO | Row evaluation timestamp |
+
+* **Indexes:** `idx_import_row_job (job_id)`, `idx_import_row_status (status)`, `idx_import_row_ident (record_identifier)`.
+
+---
+
 ## 4. Sensitive Fields & Access Governance
 
 | Entity | Sensitive Column | Risk Assessment & Protection Control |
@@ -397,7 +442,9 @@ Append-only system-level audit trail for regulatory compliance.
 ## 5. Migration Strategy & Flyway Plan
 
 * **Flyway Directory:** `backend/src/main/resources/db/migration/`
-* **Initial Migration Script:** `V1__create_initial_schema.sql`
+* **Migration Scripts:**
+  - `V1__create_initial_schema.sql`: Initial 14 tables (Departments, Users, Cases, Notes, Responses, Activities, Evidence, Custody, Hearings, Committee Members, Appeals, Referrals, Sessions, Audit Logs).
+  - `V2__add_user_import_tracking.sql`: Bulk user provisioning schema (Import Jobs and Import Row Results).
 * **Execution Paradigm:**
   - In production (`prod` profile): Flyway applies migrations against MySQL 8; `spring.jpa.hibernate.ddl-auto=validate` confirms exact schema alignment.
   - In automated test suite (`test` profile): Flyway applies migrations against in-memory H2 (configured in MySQL compatibility mode) to verify DDL syntax deterministically.

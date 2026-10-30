@@ -67,6 +67,12 @@ class RepositoryIntegrationTests {
     @Autowired
     private AuditLogRepository auditLogRepository;
 
+    @Autowired
+    private ImportJobRepository importJobRepository;
+
+    @Autowired
+    private ImportRowResultRepository importRowResultRepository;
+
     private Department createDepartment(String code, String name) {
         Department dept = new Department(code, name);
         dept.setHodName("Dr. Alan Turing");
@@ -369,5 +375,102 @@ class RepositoryIntegrationTests {
         assertThat(found.get().isAnonymous()).isTrue();
         assertThat(found.get().getStudent()).isNull();
         assertThat(found.get().getCaseType()).isEqualTo(CaseType.GRIEVANCE);
+    }
+
+    @Test
+    @DisplayName("Verify ImportJob and row-level diagnostics persistence with status counting")
+    void testImportJobAndRowResultsPersistence() {
+        Department dept = createDepartment("ADMIN_DEPT", "Administrative Services");
+        User admin = createUser("ADM-003", "Registrar Admin", "registrar@institution.edu", RoleType.SUPER_ADMIN, dept);
+
+        ImportJob job = new ImportJob(
+                "IMP-2026-0001",
+                admin,
+                ImportType.STUDENT_ROSTER,
+                "btech_2026_admissions.xlsx",
+                ImportFileFormat.XLSX,
+                1048576L
+        );
+        job.setFileChecksum("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        job.setStatus(ImportStatus.PROCESSING);
+        job.setTotalRecords(3);
+        job.setStartedAt(Instant.now());
+        ImportJob savedJob = importJobRepository.save(job);
+
+        assertThat(savedJob.getId()).isNotNull();
+
+        ImportRowResult r1 = new ImportRowResult(savedJob, 1, "student1@institution.edu", RowProcessingStatus.SUCCESS);
+        ImportRowResult r2 = new ImportRowResult(savedJob, 2, "student2@institution.edu", RowProcessingStatus.FAILED, "Roll number already registered", "DUPLICATE_ROLL_NUMBER");
+        ImportRowResult r3 = new ImportRowResult(savedJob, 3, "student3@institution.edu", RowProcessingStatus.SKIPPED, "Header row or empty entry", "EMPTY_RECORD");
+
+        importRowResultRepository.save(r1);
+        importRowResultRepository.save(r2);
+        importRowResultRepository.save(r3);
+
+        savedJob.setProcessedRecords(1);
+        savedJob.setFailedRecords(1);
+        savedJob.setSkippedRecords(1);
+        savedJob.setStatus(ImportStatus.PARTIALLY_COMPLETED);
+        savedJob.setCompletedAt(Instant.now());
+        savedJob.setSummary("Batch processed: 1 success, 1 failed, 1 skipped");
+        importJobRepository.save(savedJob);
+
+        Optional<ImportJob> foundJob = importJobRepository.findByJobReference("IMP-2026-0001");
+        assertThat(foundJob).isPresent();
+        assertThat(foundJob.get().getStatus()).isEqualTo(ImportStatus.PARTIALLY_COMPLETED);
+        assertThat(foundJob.get().getInitiatedBy().getEmail()).isEqualTo("registrar@institution.edu");
+
+        List<ImportRowResult> rows = importRowResultRepository.findByImportJobOrderByRowNumberAsc(savedJob);
+        assertThat(rows).hasSize(3);
+        assertThat(rows.get(0).getStatus()).isEqualTo(RowProcessingStatus.SUCCESS);
+        assertThat(rows.get(1).getErrorCode()).isEqualTo("DUPLICATE_ROLL_NUMBER");
+        assertThat(rows.get(2).getStatus()).isEqualTo(RowProcessingStatus.SKIPPED);
+
+        long successCount = importRowResultRepository.countByImportJobAndStatus(savedJob, RowProcessingStatus.SUCCESS);
+        assertThat(successCount).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Verify bulk import supported formats (XLSX, CSV, JSON) and job reference uniqueness")
+    void testImportJobSupportedFormatsAndUniqueness() {
+        Department dept = createDepartment("HR_DEPT", "Human Resources");
+        User admin = createUser("ADM-004", "HR Admin", "hr.admin@institution.edu", RoleType.SUPER_ADMIN, dept);
+
+        ImportJob csvJob = new ImportJob("IMP-CSV-001", admin, ImportType.FACULTY_ROSTER, "faculty.csv", ImportFileFormat.CSV, 20480L);
+        importJobRepository.save(csvJob);
+
+        ImportJob jsonJob = new ImportJob("IMP-JSON-001", admin, ImportType.STAFF_ROSTER, "staff.json", ImportFileFormat.JSON, 40960L);
+        importJobRepository.save(jsonJob);
+
+        assertThat(importJobRepository.existsByJobReference("IMP-CSV-001")).isTrue();
+        assertThat(importJobRepository.existsByJobReference("IMP-JSON-001")).isTrue();
+
+        // Duplicate job reference must trigger DataIntegrityViolationException on flush
+        ImportJob duplicateJob = new ImportJob("IMP-CSV-001", admin, ImportType.STUDENT_ROSTER, "other.csv", ImportFileFormat.CSV, 1024L);
+        assertThatThrownBy(() -> {
+            importJobRepository.saveAndFlush(duplicateJob);
+        }).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @DisplayName("Verify cascade deletion of row results when ImportJob is deleted")
+    void testImportJobCascadeDeletion() {
+        Department dept = createDepartment("ROSTER_DEPT", "Roster Management");
+        User admin = createUser("ADM-005", "Roster Admin", "roster@institution.edu", RoleType.SUPER_ADMIN, dept);
+
+        ImportJob job = new ImportJob("IMP-DEL-001", admin, ImportType.GENERAL_USERS, "users.xlsx", ImportFileFormat.XLSX, 51200L);
+        ImportRowResult row1 = new ImportRowResult(job, 1, "test@institution.edu", RowProcessingStatus.SUCCESS);
+        job.addRowResult(row1);
+        ImportJob saved = importJobRepository.saveAndFlush(job);
+
+        Long jobId = saved.getId();
+        assertThat(importRowResultRepository.findByImportJobOrderByRowNumberAsc(saved)).hasSize(1);
+
+        // Delete the parent job
+        importJobRepository.delete(saved);
+        importJobRepository.flush();
+
+        assertThat(importJobRepository.findById(jobId)).isEmpty();
+        assertThat(importJobRepository.findByJobReference("IMP-DEL-001")).isEmpty();
     }
 }
