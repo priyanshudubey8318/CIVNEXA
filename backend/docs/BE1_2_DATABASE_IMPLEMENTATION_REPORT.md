@@ -5,37 +5,37 @@
 **Phase:** BE-1.2 — MySQL Database Schema, JPA Entity Model & Flyway Migrations  
 **Repository:** `https://github.com/priyanshudubey8318/CIVNEXA.git`  
 **Branch:** `main`  
-**Execution Date:** October 29, 2026  
-**Status:** COMPLETE & FULLY VERIFIED (Awaiting Authorization for BE-1.3)
+**Execution Date:** October 30, 2026  
+**Status:** COMPLETE & FULLY AUDITED (Awaiting Authorization for BE-1.3)
 
 ---
 
 ## 1. Executive Summary
 
-Phase **BE-1.2** establishes the relational database foundation, JPA entity model, Spring Data repositories, and Flyway database migration pipeline for the CIVNEXA backend. 
+Phase **BE-1.2** establishes the complete relational database architecture, Jakarta Persistence (JPA) entity model, Spring Data JPA repositories, and Flyway migration pipeline for CIVNEXA.
 
-All 14 core entities across student conduct, proctorial governance, evidence vault, appellate review, student counseling, and regulatory audit have been designed, mapped, migrated, and verified against MySQL 8 specifications. Hermetic automated integration testing has verified entity relationships, constraint enforcement, cryptographic checksum tracking, cascade safety, and Hibernate strict schema validation (`ddl-auto: validate`) against Flyway migrations.
+The schema comprehensively supports all core institutional conduct workflows, grievance tracking, evidence custody, disciplinary hearings, appellate reviews, counseling records, administrative compliance audit logging, institutional user registration support across all eight roles, and bulk user provisioning job tracking (`.xlsx`, `.csv`, `.json`).
 
-Frontend regression testing has confirmed that all 131 tests continue passing and the production build compiles cleanly without developmental bundle leakage.
+All 16 tables, 16 JPA entities, 16 domain enums, and 16 repositories have been implemented and verified with strict Hibernate schema validation (`ddl-auto: validate`) against incremental Flyway migrations (`V1` and `V2`).
 
 ---
 
 ## 2. Git Checkpoints & Remote Synchronization
 
-Development was divided into 4 independently verifiable commit-sized steps, each committed and pushed to `origin/main` on GitHub:
+Development followed a strict commit-per-milestone paradigm pushed directly to `origin/main` on GitHub:
 
 | Checkpoint | Commit Hash | Message | Description |
 | :--- | :--- | :--- | :--- |
 | **Checkpoint A** | `bf3b57c` | `docs(database): define CIVNEXA relational schema` | Database architecture document `BE1_2_DATABASE_DESIGN.md` with Mermaid ERD, table definitions, foreign keys, index specifications, and sensitive field protection rules. |
-| **Checkpoint B** | `95517ef` | `feat(database): implement JPA entities and Spring Data repositories` | 14 Jakarta Persistence entities, 12 domain enums, and 14 Spring Data JPA repository interfaces. |
+| **Checkpoint B** | `95517ef` | `feat(database): implement JPA entities and Spring Data repositories` | 14 initial Jakarta Persistence entities, 12 domain enums, and 14 Spring Data JPA repository interfaces. |
 | **Checkpoint C** | `6c6e5b9` | `feat(database): configure Flyway migrations and MySQL baseline` | Flyway V1 DDL migration script (`V1__create_initial_schema.sql`), MySQL 8 and H2 datasource configuration, and Hibernate schema validation (`validate`). |
-| **Checkpoint D** | *(Pending)* | `test(database): verify schema migrations and entity persistence` | Comprehensive integration test suite (`RepositoryIntegrationTests.java`), Department constructor ergonomics, frontend regression pass, and implementation report. |
+| **Checkpoint D** | `35386e5` | `test(database): verify schema migrations and entity persistence` | Initial integration test suite (`RepositoryIntegrationTests.java`), Department constructor ergonomics, frontend regression pass, and implementation report. |
+| **Checkpoint E** | `0aebd32` | `feat(database): add user import tracking schema` | Bulk user provisioning schema: `ImportJob` and `ImportRowResult` entities, 4 enums (`ImportStatus`, `ImportType`, `ImportFileFormat`, `RowProcessingStatus`), 2 repositories, `V2__add_user_import_tracking.sql` migration, and import persistence tests. |
+| **Checkpoint F** | *(Current)* | `docs(database): finalize BE-1.2 implementation report and audit closeout` | Final audit report, data integrity boundary analysis, and BE-1.2 phase closeout. |
 
 ---
 
 ## 3. Relational Schema Architecture
-
-The relational schema represents all core entities inspected from the frontend domain services (`caseService.js`, `evidenceService.js`, `hearingService.js`, `counselingService.js`, `appealService.js`, and `adminService.js`):
 
 ```mermaid
 erDiagram
@@ -52,6 +52,7 @@ erDiagram
     USERS ||--o{ APPEALS : "appellant / reviewer / decided_by"
     USERS ||--o{ COUNSELING_REFERRALS : "student / referrer / counselor"
     USERS ||--o{ AUDIT_LOGS : "triggers"
+    USERS ||--o{ IMPORT_JOBS : "initiates"
 
     CASES ||--o{ INVESTIGATION_NOTES : "contains"
     CASES ||--o{ STUDENT_RESPONSES : "receives"
@@ -64,87 +65,157 @@ erDiagram
     EVIDENCE_ITEMS ||--o{ EVIDENCE_CUSTODY_LOGS : "maintains"
     HEARINGS ||--o{ HEARING_COMMITTEE_MEMBERS : "comprises"
     COUNSELING_REFERRALS ||--o{ COUNSELING_SESSIONS : "conducts"
+    IMPORT_JOBS ||--o{ IMPORT_ROW_RESULTS : "tracks_rows"
 ```
 
-### 3.1 Implemented Tables & Entity Mapping
+### 3.1 Entity and Table Inventory (16 Tables / 16 Entities)
 
-1. **`departments` (`Department.java`)**: Institutional departments (Code, Name, HOD, Contact, Status).
-2. **`users` (`User.java`)**: Unified institutional identities for all 8 personas (`SUPER_ADMIN`, `DEAN`, `HOD`, `FACULTY`, `STAFF`, `COORDINATOR`, `COMMITTEE_MEMBER`, `STUDENT`) with academic attributes and BCrypt password hash.
-3. **`cases` (`CaseRecord.java`)**: Consolidated case registry accommodating both disciplinary `INCIDENT` reports and student `GRIEVANCE` filings with full status workflow and whistleblower protection.
-4. **`case_investigation_notes` (`InvestigationNote.java`)**: Formal investigator notes with confidentiality flag.
-5. **`student_responses` (`StudentResponse.java`)**: Student explanations and defenses with explicit declaration confirmations.
-6. **`case_activities` (`CaseActivity.java`)**: Immutable chronological timeline of status transitions and proctorial actions.
-7. **`evidence_items` (`EvidenceItem.java`)**: Digital and physical exhibit metadata with SHA-256 cryptographic digests and storage references.
-8. **`evidence_custody_logs` (`EvidenceCustodyLog.java`)**: Append-only legal chain of custody ledger.
-9. **`hearings` (`Hearing.java`)**: Scheduled proctorial board sessions with date, time, venue, mode, and deliberation minutes.
-10. **`hearing_committee_members` (`HearingCommitteeMember.java`)**: Hearing panel roster with attendance tracking and composite uniqueness.
-11. **`appeals` (`AppealRecord.java`)**: Independent appellate review petitions with statutory grounds, relief sought, and reviewer assignments.
-12. **`counseling_referrals` (`CounselingReferral.java`)**: Student welfare referrals with strict clinical confidentiality isolation (`confidential_notes`).
-13. **`counseling_sessions` (`CounselingSession.java`)**: Sequential counseling attendance records and clinical progress notes.
-14. **`audit_logs` (`AuditLog.java`)**: Regulatory compliance audit log with UUIDs, actor snapshots, and IP tracking.
-
----
-
-## 4. Flyway Migrations & Database Baseline
-
-- **Migration File:** `backend/src/main/resources/db/migration/V1__create_initial_schema.sql`
-- **Target RDBMS:** MySQL 8 (`ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`)
-- **Compatibility:** Fully compliant with MySQL 8 and H2 in-memory test databases (`MODE=MySQL`).
-- **Validation Pipeline:**
-  - `spring.flyway.enabled: true`
-  - `spring.flyway.baseline-on-migrate: true`
-  - `spring.jpa.hibernate.ddl-auto: validate`
-- **Verification:** During application boot, Flyway applies `V1__create_initial_schema.sql`, followed by Hibernate strictly validating that all 14 JPA entities, column types, and constraints match the migrated schema with 100% fidelity.
+| Table | JPA Entity | Repository | Migration Script | Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| `departments` | `Department` | `DepartmentRepository` | `V1` | Institutional academic and administrative departments |
+| `users` | `User` | `UserRepository` | `V1` | Institutional identities for all 8 roles with academic profiles |
+| `cases` | `CaseRecord` | `CaseRecordRepository` | `V1` | Consolidated incidents (`INCIDENT`) and student grievances (`GRIEVANCE`) |
+| `case_investigation_notes` | `InvestigationNote` | `InvestigationNoteRepository` | `V1` | Chronological formal inquiry findings with confidentiality flags |
+| `student_responses` | `StudentResponse` | `StudentResponseRepository` | `V1` | Formal explanations, defenses, and truth declarations |
+| `case_activities` | `CaseActivity` | `CaseActivityRepository` | `V1` | Procedural timeline tracking status transitions and actions |
+| `evidence_items` | `EvidenceItem` | `EvidenceItemRepository` | `V1` | Physical and digital exhibits with SHA-256 cryptographic digests |
+| `evidence_custody_logs` | `EvidenceCustodyLog` | `EvidenceCustodyLogRepository` | `V1` | Append-only chain of custody audit ledger |
+| `hearings` | `Hearing` | `HearingRepository` | `V1` | Scheduled committee proceedings with dates, times, venues, and minutes |
+| `hearing_committee_members` | `HearingCommitteeMember` | `HearingCommitteeMemberRepository` | `V1` | Panel composition, attendance records, and composite uniqueness |
+| `appeals` | `AppealRecord` | `AppealRecordRepository` | `V1` | Appellate review petitions, statutory grounds, and determinations |
+| `counseling_referrals` | `CounselingReferral` | `CounselingReferralRepository` | `V1` | Student welfare referrals with strictly isolated clinical notes |
+| `counseling_sessions` | `CounselingSession` | `CounselingSessionRepository` | `V1` | Sequential counseling session records and attendance tracking |
+| `audit_logs` | `AuditLog` | `AuditLogRepository` | `V1` | Regulatory compliance audit trail with UUIDs and IP logging |
+| `import_jobs` | `ImportJob` | `ImportJobRepository` | `V2` | Bulk user provisioning batch tracking (XLSX, CSV, JSON) |
+| `import_row_results` | `ImportRowResult` | `ImportRowResultRepository` | `V2` | Row-by-row diagnostic validation and error tracking |
 
 ---
 
-## 5. Automated Verification Results
+## 4. User Registration & Bulk Import Database Support
 
-### 5.1 Backend Verification (`mvnw test` & `mvnw package`)
+### 4.1 Institutional User Registration Support
+The database model natively supports account provisioning for all eight institutional roles:
+- `SUPER_ADMIN`
+- `DEAN`
+- `HOD`
+- `FACULTY`
+- `STAFF`
+- `COORDINATOR`
+- `COMMITTEE_MEMBER`
+- `STUDENT`
 
+**Key Model Attributes:**
+- `name`: Full legal institutional name (`VARCHAR(100) NOT NULL`).
+- `email`: Normalized unique institutional email (`VARCHAR(120) NOT NULL UNIQUE`).
+- `password_hash`: BCrypt security hash (`VARCHAR(255) NOT NULL`). Plaintext passwords are never stored.
+- `role`: Strict enum constraint (`RoleType`).
+- `department_id`: Foreign key association to `departments.id` (`ON DELETE SET NULL`).
+- `user_reference`: Public reference identifier (`VARCHAR(30) NOT NULL UNIQUE`, e.g. `STU-1001`, `FAC-001`).
+- `roll_number` & `enrollment_number`: Institutional identifiers with unique index on roll number.
+- `course`, `semester`, `section`, `cgpa`: Academic standing attributes (`cgpa` stored as `DECIMAL(4,2)`).
+- `status`: Lifecycle status (`VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'`).
+- `created_at` & `updated_at`: Immutable creation and update timestamps.
+- **Zero Seeded Accounts:** No demo users, sample accounts, or hardcoded passwords have been seeded into the database.
+
+### 4.2 Bulk User Import Tracking Support
+CIVNEXA includes first-class schema support for administrative user provisioning via uploaded rosters:
+- **Supported Formats:** Excel (`.xlsx` / `XLSX`), Comma-Separated Values (`.csv` / `CSV`), and JavaScript Object Notation (`.json` / `JSON`).
+- **`ImportJob` Attributes:**
+  - `job_reference`: Unique tracking reference (`VARCHAR(50) NOT NULL UNIQUE`, e.g. `IMP-2026-0001`).
+  - `initiated_by_id`: Administrator reference (`users.id`) configured with `ON DELETE SET NULL` so removing an administrator account never destroys historical import audit trails.
+  - `import_type`: Roster classification (`STUDENT_ROSTER`, `FACULTY_ROSTER`, `STAFF_ROSTER`, `GENERAL_USERS`).
+  - `file_name`, `file_format`, `file_size_bytes`: Uploaded payload metadata.
+  - `file_checksum`: SHA-256 cryptographic digest of the source file.
+  - `status`: Batch lifecycle state (`PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`, `PARTIALLY_COMPLETED`).
+  - `total_records`, `processed_records`, `failed_records`, `skipped_records`: Granular processing counters.
+  - `summary`: Factual error and throughput summary narrative.
+- **`ImportRowResult` Attributes:**
+  - `job_id`: Foreign key to `import_jobs.id` configured with `ON DELETE CASCADE` ensuring row diagnostics are cleanly purged if an import job is removed.
+  - `row_number`: 1-based source file line or row index.
+  - `record_identifier`: Target user reference or email when available.
+  - `status`: Row processing result (`SUCCESS`, `FAILED`, `SKIPPED`).
+  - `error_message` & `error_code`: Diagnostic failure reason (e.g. `DUPLICATE_ROLL_NUMBER`, `EMPTY_RECORD`).
+- **Security Control:** Plaintext passwords, tokens, or raw credential strings are never written to import tracking tables.
+
+---
+
+## 5. Data Integrity Guarantees & Confidentiality Boundaries
+
+To maintain strict compliance and legal defensibility, guarantees are categorized by their enforcement tier:
+
+| Guarantee | Enforcement Tier | Implementation Mechanism | Limitation / Scope |
+| :--- | :--- | :--- | :--- |
+| **Public Key & Reference Uniqueness** | Database-Enforced | `UNIQUE` constraints and indexes on `case_number`, `user_reference`, `email`, `roll_number`, `evidence_reference`, `hearing_number`, `appeal_number`, `referral_number`, `event_uuid`, `job_reference`, `department.code`, and composite `(hearing_id, member_id)`. | Enforced unconditionally by RDBMS engine. |
+| **Referential Integrity & Cascades** | Database-Enforced | Foreign keys with `ON DELETE CASCADE` for dependent notes/activities/sessions/row-results, and `ON DELETE SET NULL` for referential actors, preventing orphaned child records while preserving audit history. | Enforced unconditionally by RDBMS engine. |
+| **Whistleblower Protection** | Application-Level | `is_anonymous = true` flag on `cases` allows anonymous grievances without linking a reporter or student identity. | In upcoming API phases (BE-1.3+), serialization layers will redact reporter identities for non-administrative roles. |
+| **Counseling Clinical Isolation** | Application-Level | Protected `confidential_notes` column in `counseling_referrals` is excluded from general case queries, case timelines, and defensive `toString()` representations. | Database-level table partitioning or row-level security is not applied; access control is maintained at the service and DTO projection layer. |
+| **Evidence SHA-256 Integrity** | Application-Level | `sha256_checksum` in `evidence_items` and `file_checksum` in `import_jobs` store 64-character hex digests computed at upload. | Checksum verification is executed in software (Web Crypto frontend, Java `MessageDigest` backend); the database stores and indexes the digest. |
+| **Append-Only Immutability** | Application-Level | `AuditLog`, `CaseActivity`, and `EvidenceCustodyLog` entities define `updatable = false` on timestamps and provide no mutating API methods. | At the RDBMS tier, table `UPDATE` and `DELETE` privileges will be restricted at the database user permission level in production environments. |
+
+---
+
+## 6. Migration Compatibility & Automated Verification
+
+### 6.1 Database Migration Compatibility
+- `spring.flyway.enabled=true`
+- `spring.flyway.baseline-on-migrate=true`
+- `spring.flyway.locations=classpath:db/migration`
+- `spring.jpa.hibernate.ddl-auto=validate`
+
+Flyway applies `V1__create_initial_schema.sql` (14 tables) and `V2__add_user_import_tracking.sql` (2 tables) sequentially. Hibernate then strictly verifies that all 16 JPA entities, properties, column types, and constraints match the database schema with zero discrepancies.
+
+### 6.2 Database Environment & Testing Honesty
+- **Verified Runtime:** **H2 Database (version 2.4.240)** configured with `MODE=MySQL` was utilized for all automated integration tests, schema migrations, and Hibernate validation.
+- **MySQL 8.0 Status:** MySQL Server 8.0.43 is installed on the local system (`MySQL80` service running on port 3306). However, because host credentials/passwords for this local service are not present in the environment configuration, live MySQL 8 connection testing remains an environment configuration step for staging/production deployment.
+
+### 6.3 Automated Backend Test Execution (`mvnw test` & `mvnw package`)
 ```text
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
 [INFO] Running com.civnexa.CivnexaBackendApplicationTests
 [INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
 [INFO] Running com.civnexa.controller.HealthControllerTests
 [INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0
 [INFO] Running com.civnexa.repository.RepositoryIntegrationTests
-[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0
 [INFO] 
 [INFO] Results:
-[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 17, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
 [INFO] BUILD SUCCESS
-[INFO] Total time: 25.383 s
 [INFO] Building jar: .../backend/target/civnexa-backend-1.0.0-SNAPSHOT.jar
 ```
 
-**Tested Scenarios in `RepositoryIntegrationTests.java`:**
-1. Department and User persistence with role mappings and profile attributes.
-2. CaseRecord creation, type distinctions (`INCIDENT` vs `GRIEVANCE`), and cascade associations.
-3. Evidence Vault metadata persistence and cryptographic Chain of Custody (SHA-256 validation).
-4. Hearing schedule, presiding authority, and committee roster.
-5. AppealRecord lifecycle, statutory grounds, and reviewer assignment.
-6. CounselingReferral confidentiality isolation and sequential progress sessions.
-7. AuditLog persistence and compliance query retrieval.
-8. Database uniqueness constraints on critical public references (duplicate email triggers `DataIntegrityViolationException`).
-9. Anonymous grievance whistleblower protection in CaseRecord (`is_anonymous = true`, student is null).
+**Verified Integration Test Cases in `RepositoryIntegrationTests`:**
+1. `testDepartmentAndUserPersistence`: Entity persistence, role mappings, and profile attributes.
+2. `testCaseRecordPersistenceAndRelationships`: Incident creation and cascade associations.
+3. `testEvidenceItemAndCustodyChain`: Exhibit metadata and cryptographic chain of custody.
+4. `testHearingAndCommitteeMembers`: Proctorial hearings, scheduling, and panel roster.
+5. `testAppealRecordLifecycle`: Appellate petitions, statutory grounds, and reviewer assignments.
+6. `testCounselingReferralAndSessions`: Welfare intake, clinical confidentiality isolation, and sessions.
+7. `testAuditLogPersistence`: System audit logging and entity compliance queries.
+8. `testUniqueConstraintsEnforcement`: RDBMS-enforced duplicate email rejection (`DataIntegrityViolationException`).
+9. `testAnonymousWhistleblowerGrievance`: Whistleblower grievance lodging without student reference.
+10. `testImportJobAndRowResultsPersistence`: Bulk user import tracking, row diagnostics, and status counts.
+11. `testImportJobSupportedFormatsAndUniqueness`: Verification of XLSX, CSV, JSON formats and unique job reference constraint.
+12. `testImportJobCascadeDeletion`: Cascade deletion of row results when parent import job is removed.
 
-### 5.2 Frontend Regression Verification (`npm run test` & `npm run build`)
-
+### 6.4 Frontend Regression Suite (`npm run test` & `npm run build`)
 ```text
  Test Files  11 passed (11)
       Tests  131 passed (131)
-   Duration  50.19s
+   Duration  52.67s
 
-✓ built in 14.01s (Production bundle clean, zero mock leakage)
+✓ 2044 modules transformed.
+✓ built in 13.44s (Zero mock bundle leakage; clean production distribution)
 ```
 
 ---
 
-## 6. Strict Phase Stop Boundary
+## 7. Strict Phase Stop Gate
 
-As instructed by the project guidelines:
-- **Scope limitation respected:** Only the database schema, JPA entities, repositories, and Flyway migrations have been implemented.
-- **No REST Controllers:** Business domain controllers, endpoints, and token generation routines remain intentionally unbuilt until authorized in Phase BE-1.3.
-- **Security integrity maintained:** No credentials or tokens are committed; safe environment variables (`DB_URL`, `DB_USERNAME`, `DB_PASSWORD`) are configured with secure local fallbacks.
-
-**Status:** Ready for Phase BE-1.3 (Authentication, JWT & Security Integration) upon user authorization.
+Phase BE-1.2 is officially closed out:
+- All database schema tables, JPA entities, repositories, and Flyway migrations are complete and pushed to GitHub.
+- **No business REST endpoints, authentication controllers, login services, or JWT generation logic have been implemented.**
+- The project is ready for **Phase BE-1.3 (Authentication, JWT Security & User Credential Services)** upon explicit authorization.
