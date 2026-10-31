@@ -101,6 +101,19 @@ public class User {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();
 
+    @Column(name = "password_change_required", nullable = false)
+    private boolean passwordChangeRequired = false;
+
+    @Size(max = 64)
+    @Column(name = "qr_token", length = 64)
+    private String qrToken;
+
+    @Column(name = "qr_issued_at")
+    private Instant qrIssuedAt;
+
+    @Column(name = "qr_revoked", nullable = false)
+    private boolean qrRevoked = false;
+
     public User() {
     }
 
@@ -285,6 +298,38 @@ public class User {
 
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public boolean isPasswordChangeRequired() {
+        return passwordChangeRequired;
+    }
+
+    public void setPasswordChangeRequired(boolean passwordChangeRequired) {
+        this.passwordChangeRequired = passwordChangeRequired;
+    }
+
+    public String getQrToken() {
+        return qrToken;
+    }
+
+    public void setQrToken(String qrToken) {
+        this.qrToken = qrToken;
+    }
+
+    public Instant getQrIssuedAt() {
+        return qrIssuedAt;
+    }
+
+    public void setQrIssuedAt(Instant qrIssuedAt) {
+        this.qrIssuedAt = qrIssuedAt;
+    }
+
+    public boolean isQrRevoked() {
+        return qrRevoked;
+    }
+
+    public void setQrRevoked(boolean qrRevoked) {
+        this.qrRevoked = qrRevoked;
     }
 
     @Override

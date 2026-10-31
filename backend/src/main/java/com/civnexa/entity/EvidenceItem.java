@@ -80,6 +80,10 @@ public class EvidenceItem {
     @Column(name = "uploaded_at", nullable = false, updatable = false)
     private Instant uploadedAt = Instant.now();
 
+    @Size(max = 64)
+    @Column(name = "qr_custody_token", length = 64)
+    private String qrCustodyToken;
+
     public EvidenceItem() {
     }
 
@@ -220,6 +224,14 @@ public class EvidenceItem {
 
     public void setUploadedAt(Instant uploadedAt) {
         this.uploadedAt = uploadedAt;
+    }
+
+    public String getQrCustodyToken() {
+        return qrCustodyToken;
+    }
+
+    public void setQrCustodyToken(String qrCustodyToken) {
+        this.qrCustodyToken = qrCustodyToken;
     }
 
     @Override

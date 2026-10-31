@@ -26,6 +26,9 @@ public class UserResponse {
     private String section;
     private BigDecimal cgpa;
     private Instant createdAt;
+    private Boolean passwordChangeRequired;
+    private String qrToken;
+    private Boolean qrRevoked;
 
     public UserResponse() {
     }
@@ -56,6 +59,9 @@ public class UserResponse {
         response.setSection(user.getSection());
         response.setCgpa(user.getCgpa());
         response.setCreatedAt(user.getCreatedAt());
+        response.setPasswordChangeRequired(user.isPasswordChangeRequired());
+        response.setQrToken(user.getQrToken());
+        response.setQrRevoked(user.isQrRevoked());
 
         return response;
     }
@@ -186,6 +192,30 @@ public class UserResponse {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public Boolean getPasswordChangeRequired() {
+        return passwordChangeRequired;
+    }
+
+    public void setPasswordChangeRequired(Boolean passwordChangeRequired) {
+        this.passwordChangeRequired = passwordChangeRequired;
+    }
+
+    public String getQrToken() {
+        return qrToken;
+    }
+
+    public void setQrToken(String qrToken) {
+        this.qrToken = qrToken;
+    }
+
+    public Boolean getQrRevoked() {
+        return qrRevoked;
+    }
+
+    public void setQrRevoked(Boolean qrRevoked) {
+        this.qrRevoked = qrRevoked;
     }
 
     @Override

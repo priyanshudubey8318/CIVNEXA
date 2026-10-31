@@ -37,7 +37,8 @@ describe('FE-2 Role Navigation Configuration & Route Guards', () => {
     expect(ROLE_NAVIGATION.STAFF.length).toBe(4);
     expect(ROLE_NAVIGATION.COORDINATOR.length).toBe(6);
     expect(ROLE_NAVIGATION.COMMITTEE_MEMBER.length).toBe(5);
-    expect(ROLE_NAVIGATION.STUDENT.length).toBe(11);
+    expect(ROLE_NAVIGATION.STUDENT.length).toBe(13);
+    expect(ROLE_NAVIGATION.STUDENT.map((i) => i.path)).toContain('/student/digital-id');
 
     // Verify key paths exist
     expect(ROLE_NAVIGATION.SUPER_ADMIN.map((i) => i.path)).toContain('/admin/users');

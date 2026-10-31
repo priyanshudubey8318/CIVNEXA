@@ -28,7 +28,12 @@ import {
   AlertCircle,
   FileQuestion,
   Lock,
+  Sparkles,
+  QrCode,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import { qrService } from '../services/qrService';
+import AiCaseSummaryModal from '../components/ai/AiCaseSummaryModal';
 import AnimatedPage from '../components/common/AnimatedPage';
 import PageHeader from '../components/common/PageHeader';
 import StatusBadge from '../components/common/StatusBadge';
@@ -52,6 +57,8 @@ export const CaseDetailPage = () => {
   const [activeTab, setActiveTab] = useState('overview');
 
   // Modals state
+  const [isAiSummaryOpen, setIsAiSummaryOpen] = useState(false);
+  const [caseQrToken, setCaseQrToken] = useState(null);
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
   const [verifyAction, setVerifyAction] = useState('VERIFY'); // 'VERIFY' | 'RETURN' | 'REJECT'
   const [verifyNotes, setVerifyNotes] = useState('');
@@ -98,6 +105,7 @@ export const CaseDetailPage = () => {
     try {
       const data = await caseService.getCaseById(caseId, currentUser);
       setCaseData(data);
+      qrService.getCaseTrackingToken(caseId).then(setCaseQrToken).catch(() => {});
     } catch (err) {
       toast.error(err.message || 'Unable to load case record.');
     } finally {
@@ -345,6 +353,17 @@ export const CaseDetailPage = () => {
 
           {/* Action Buttons Toolbar based on Role & State */}
           <div className="d-flex flex-wrap align-items-center gap-2">
+            {/* AI Case Synopsis Button */}
+            <button
+              type="button"
+              onClick={() => setIsAiSummaryOpen(true)}
+              className="btn btn-outline-primary btn-sm d-flex align-items-center gap-1.5"
+              title="Generate factual AI synopsis with preserved citations"
+            >
+              <Sparkles size={15} />
+              <span>AI Case Synopsis</span>
+            </button>
+
             {/* Dean/HOD Verification Action */}
             {(isDean || isHod) &&
               (caseData.verificationStatus === 'PENDING' || caseData.status === 'PENDING_VERIFICATION') && (
@@ -636,6 +655,26 @@ export const CaseDetailPage = () => {
                   </table>
                 </div>
               </div>
+
+              {/* Case Tracking QR Code */}
+              {caseQrToken && (
+                <div className="mt-4 p-3 bg-light rounded-3 border d-flex flex-column flex-sm-row align-items-center gap-3">
+                  <div className="p-2 bg-white rounded border shadow-sm">
+                    <QRCodeSVG value={caseQrToken} size={84} level="M" />
+                  </div>
+                  <div>
+                    <div className="fw-bold text-dark d-flex align-items-center gap-1 small">
+                      <QrCode size={16} className="text-primary" /> Case Tracking QR Code
+                    </div>
+                    <div className="text-muted small">
+                      Scan with the CIVNEXA Staff Scanner to instantly verify docket validity and access permissions.
+                    </div>
+                    <div className="font-monospace text-muted mt-1" style={{ fontSize: '11px' }}>
+                      Token: {caseQrToken}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -836,6 +875,26 @@ export const CaseDetailPage = () => {
                   )}
                 </div>
               </div>
+
+              {/* Case Tracking QR Code */}
+              {caseQrToken && (
+                <div className="mt-4 p-3 bg-light rounded-3 border d-flex flex-column flex-sm-row align-items-center gap-3">
+                  <div className="p-2 bg-white rounded border shadow-sm">
+                    <QRCodeSVG value={caseQrToken} size={84} level="M" />
+                  </div>
+                  <div>
+                    <div className="fw-bold text-dark d-flex align-items-center gap-1 small">
+                      <QrCode size={16} className="text-primary" /> Case Tracking QR Code
+                    </div>
+                    <div className="text-muted small">
+                      Scan with the CIVNEXA Staff Scanner to instantly verify docket validity and access permissions.
+                    </div>
+                    <div className="font-monospace text-muted mt-1" style={{ fontSize: '11px' }}>
+                      Token: {caseQrToken}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1372,6 +1431,15 @@ export const CaseDetailPage = () => {
             </p>
           </div>
         </Modal>
+      )}
+
+      {/* AI Case Summary Modal */}
+      {isAiSummaryOpen && (
+        <AiCaseSummaryModal
+          caseId={caseData?.id || caseId}
+          caseNumber={caseData?.caseNumber}
+          onClose={() => setIsAiSummaryOpen(false)}
+        />
       )}
     </AnimatedPage>
   );

@@ -22,6 +22,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByEnrollmentNumber(String enrollmentNumber);
 
+    Optional<User> findByQrToken(String qrToken);
+
     List<User> findByRole(RoleType role);
 
     List<User> findByRoleAndDepartment(RoleType role, Department department);

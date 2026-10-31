@@ -25,6 +25,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import caseService from '../services/caseService';
 import { CASE_CATEGORIES } from '../constants/caseConfig';
+import AiComplaintClassifier from '../components/ai/AiComplaintClassifier';
 
 export const GrievanceSubmitPage = () => {
   const navigate = useNavigate();
@@ -42,6 +43,18 @@ export const GrievanceSubmitPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdGrievance, setCreatedGrievance] = useState(null);
   const [errors, setErrors] = useState({});
+
+  const handleApplyAiSuggestion = (suggestion) => {
+    if (!suggestion) return;
+    const cat = suggestion.suggestedCategory;
+    if (cat === 'ACADEMIC_INTEGRITY' || cat === 'ACADEMIC_GRIEVANCE') setCategoryKey('ACADEMIC_GRIEVANCE');
+    else if (cat === 'RAGGING_BULLYING' || cat === 'ANTI_RAGGING') setCategoryKey('ANTI_RAGGING');
+    else if (cat === 'HARASSMENT_DISCRIMINATION' || cat === 'HARASSMENT') setCategoryKey('CAMPUS_SAFETY');
+    else if (cat === 'HOSTEL_ISSUE') setCategoryKey('HOSTEL_ISSUE');
+    else if (cat === 'INFRASTRUCTURE' || cat === 'FACILITIES_INFRASTRUCTURE') setCategoryKey('INFRASTRUCTURE');
+
+    toast.success(`Applied AI recommendation: ${suggestion.suggestedCategory}`);
+  };
 
   // Categories supported for student grievance
   const grievanceCategories = [
@@ -186,6 +199,11 @@ export const GrievanceSubmitPage = () => {
         <div className="col-12 col-lg-8">
           <div className="cx-card p-4 p-md-5">
             <form onSubmit={handleSubmit} noValidate>
+              <AiComplaintClassifier
+                title={subject}
+                description={description}
+                onApplySuggestion={handleApplyAiSuggestion}
+              />
               {/* Category Selection */}
               <div className="mb-4">
                 <label htmlFor="grievance-category" className="cx-form-label">

@@ -16,6 +16,8 @@ public interface EvidenceItemRepository extends JpaRepository<EvidenceItem, Long
 
     Optional<EvidenceItem> findByEvidenceReference(String evidenceReference);
 
+    Optional<EvidenceItem> findByQrCustodyToken(String qrCustodyToken);
+
     List<EvidenceItem> findByCaseRecord(CaseRecord caseRecord);
 
     List<EvidenceItem> findByCaseRecordId(Long caseId);

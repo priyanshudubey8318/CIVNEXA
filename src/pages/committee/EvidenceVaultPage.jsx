@@ -20,13 +20,16 @@ import {
   RefreshCw,
   X,
   ArrowRight,
+  QrCode,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import AnimatedPage from '../../components/common/AnimatedPage';
 import PageHeader from '../../components/common/PageHeader';
 import Modal from '../../components/feedback/Modal';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import evidenceService, { computeSha256Checksum } from '../../services/evidenceService';
+import { qrService } from '../../services/qrService';
 
 export const EvidenceVaultPage = () => {
   const { currentUser } = useAuth();
@@ -52,6 +55,7 @@ export const EvidenceVaultPage = () => {
   const [verificationResult, setVerificationResult] = useState(null);
 
   const [isCustodyOpen, setIsCustodyOpen] = useState(false);
+  const [custodyQrToken, setCustodyQrToken] = useState(null);
   const [isActionLoading, setIsActionLoading] = useState(false);
 
   const loadEvidence = async () => {
@@ -117,6 +121,10 @@ export const EvidenceVaultPage = () => {
   const openCustodyDrawer = (item) => {
     setSelectedItem(item);
     setIsCustodyOpen(true);
+    setCustodyQrToken(null);
+    if (item?.id) {
+      qrService.getEvidenceCustodyToken(item.id).then(setCustodyQrToken).catch(() => {});
+    }
   };
 
   const openReviewModal = (item) => {
@@ -550,6 +558,25 @@ export const EvidenceVaultPage = () => {
               Chronological log of forensic possession, access, and status modifications for evidence{' '}
               <strong className="text-dark">{selectedItem.name}</strong>.
             </div>
+
+            {custodyQrToken && (
+              <div className="p-3 mb-4 bg-light rounded-3 border d-flex align-items-center gap-3">
+                <div className="p-2 bg-white rounded border shadow-sm">
+                  <QRCodeSVG value={custodyQrToken} size={80} level="M" />
+                </div>
+                <div>
+                  <div className="fw-bold text-dark d-flex align-items-center gap-1 small">
+                    <QrCode size={16} className="text-primary" /> Evidence Custody QR Token
+                  </div>
+                  <div className="text-muted small">
+                    Scan with the CIVNEXA Staff Scanner to log custody transfer, vault storage, or lab inspection.
+                  </div>
+                  <div className="font-monospace text-muted mt-1" style={{ fontSize: '11px' }}>
+                    {custodyQrToken}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {(!selectedItem.custodyChain || selectedItem.custodyChain.length === 0) ? (
               <div className="p-4 text-center text-muted small">No custody events recorded.</div>

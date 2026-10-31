@@ -116,6 +116,10 @@ public class CaseRecord {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();
 
+    @Size(max = 64)
+    @Column(name = "qr_tracking_token", length = 64)
+    private String qrTrackingToken;
+
     public CaseRecord() {
     }
 
@@ -337,6 +341,14 @@ public class CaseRecord {
 
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getQrTrackingToken() {
+        return qrTrackingToken;
+    }
+
+    public void setQrTrackingToken(String qrTrackingToken) {
+        this.qrTrackingToken = qrTrackingToken;
     }
 
     @Override

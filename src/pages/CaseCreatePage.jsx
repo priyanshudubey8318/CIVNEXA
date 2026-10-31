@@ -29,6 +29,7 @@ import { useToast } from '../context/ToastContext';
 import caseService from '../services/caseService';
 import { searchStudents, MOCK_STUDENTS } from '../constants/studentDirectory';
 import { CASE_CATEGORIES } from '../constants/caseConfig';
+import AiComplaintClassifier from '../components/ai/AiComplaintClassifier';
 
 export const CaseCreatePage = () => {
   const navigate = useNavigate();
@@ -56,6 +57,21 @@ export const CaseCreatePage = () => {
   const [priority, setPriority] = useState('MEDIUM');
   const [isConfidential, setIsConfidential] = useState(false);
   const [remarks, setRemarks] = useState('');
+
+  const handleApplyAiSuggestion = (suggestion) => {
+    if (!suggestion) return;
+    const cat = suggestion.suggestedCategory;
+    if (cat === 'ACADEMIC_INTEGRITY') setCategoryKey('EXAM_INCIDENT');
+    else if (cat === 'RAGGING_BULLYING' || cat === 'ANTI_RAGGING') setCategoryKey('ANTI_RAGGING');
+    else if (cat === 'HARASSMENT_DISCRIMINATION' || cat === 'HARASSMENT') setCategoryKey('CAMPUS_SAFETY');
+    else if (cat === 'FACILITIES_INFRASTRUCTURE') setCategoryKey('INFRASTRUCTURE');
+    else if (cat === 'DISCIPLINARY' || cat === 'DISCIPLINE') setCategoryKey('DISCIPLINE');
+
+    if (suggestion.suggestedPriority) {
+      setPriority(suggestion.suggestedPriority);
+    }
+    toast.success(`Applied AI recommendation: ${suggestion.suggestedCategory} (${suggestion.suggestedPriority})`);
+  };
 
   // Step 3: Evidence Files State
   const [attachments, setAttachments] = useState([]);
@@ -424,6 +440,12 @@ export const CaseCreatePage = () => {
                 Specify the nature of the allegation, location, priority level, and detailed narrative.
               </p>
             </div>
+
+            <AiComplaintClassifier
+              title={title}
+              description={description}
+              onApplySuggestion={handleApplyAiSuggestion}
+            />
 
             <div className="row g-3">
               {/* Category & Subcategory */}

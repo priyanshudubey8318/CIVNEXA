@@ -32,6 +32,9 @@ import {
   HelpCircle,
   Bell,
   MessageSquare,
+  QrCode,
+  Sparkles,
+  Scan,
 } from 'lucide-react';
 
 export const ROLE_NAVIGATION = {
@@ -104,6 +107,7 @@ export const ROLE_NAVIGATION = {
   STUDENT: [
     { id: 'overview', label: 'Student Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { id: 'profile', label: 'My Student Profile', path: '/student/profile', icon: User },
+    { id: 'digital-id', label: 'Digital Student ID', path: '/student/digital-id', icon: QrCode },
     { id: 'cases', label: 'My Cases', path: '/cases', icon: FolderKanban },
     { id: 'raise-grievance', label: 'Raise a Grievance', path: '/grievances/raise', icon: ShieldAlert },
     { id: 'complaints', label: 'My Complaints', path: '/student/complaints', icon: MessageSquare },
@@ -113,6 +117,7 @@ export const ROLE_NAVIGATION = {
     { id: 'notifications', label: 'Notifications', path: '/student/notifications', icon: Bell },
     { id: 'policies', label: 'Institutional Policies', path: '/policies', icon: FileText },
     { id: 'support', label: 'Campus Support', path: '/student/support', icon: HelpCircle },
+    { id: 'ai-assistant', label: 'AI Policy Assistant', path: '/ai-assistant', icon: Sparkles },
   ],
 };
 
@@ -151,6 +156,8 @@ export const ROUTE_PERMISSIONS = {
   '/committee/timeline': ['SUPER_ADMIN', 'DEAN', 'COMMITTEE_MEMBER'],
   '/committee/calendar': ['SUPER_ADMIN', 'DEAN', 'COMMITTEE_MEMBER'],
   '/student/profile': ['STUDENT'],
+  '/student/digital-id': ['STUDENT'],
+  '/scanner': ['SUPER_ADMIN', 'DEAN', 'HOD', 'FACULTY', 'STAFF', 'COORDINATOR', 'COMMITTEE_MEMBER'],
   '/student/complaints': ['STUDENT'],
   '/student/responses': ['STUDENT'],
   '/student/appeals': ['STUDENT'],

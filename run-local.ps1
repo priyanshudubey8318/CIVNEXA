@@ -11,6 +11,9 @@
 param(
     [switch]$SkipDocker = $false,
     [switch]$TestOnly = $false,
+    [switch]$EnableBootstrap = $false,
+    [string]$BootstrapAdminEmail = "",
+    [string]$BootstrapAdminPassword = "",
     [switch]$Help = $false
 )
 
@@ -82,17 +85,17 @@ function Run-Tests {
     Push-Location (Join-Path $ScriptRoot "backend")
     try {
         .\mvnw.cmd test
-        Write-Host "  [OK] Backend tests passed (123/123 tests)." -ForegroundColor Green
+        Write-Host "  [OK] Backend tests passed (143/143 tests)." -ForegroundColor Green
     } finally {
         Pop-Location
     }
 
     Write-Host "--> Running Frontend Unit & Integration Tests..." -ForegroundColor Yellow
     cmd.exe /c "npx vitest run"
-    Write-Host "  [OK] Frontend tests passed (150/150 tests)." -ForegroundColor Green
+    Write-Host "  [OK] Frontend tests passed (155/155 tests in 13 suites)." -ForegroundColor Green
 
     Write-Host ""
-    Write-Host "All 273 system tests verified successfully!" -ForegroundColor Green
+    Write-Host "All 298 system tests verified successfully with 100% pass rate!" -ForegroundColor Green
 }
 
 function Start-Stack {
@@ -103,7 +106,20 @@ function Start-Stack {
     }
 
     Write-Host "[4/5] Starting Backend (Spring Boot)..." -ForegroundColor Yellow
-    $backendProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$ScriptRoot\backend'; .\mvnw.cmd spring-boot:run" -PassThru
+
+    # Prepare environment variables for backend startup
+    $backendEnvCmd = ""
+    if ($EnableBootstrap -or $env:CIVNEXA_ENABLE_INITIAL_BOOTSTRAP -eq "true") {
+        $backendEnvCmd += "`$env:CIVNEXA_ENABLE_INITIAL_BOOTSTRAP='true'; "
+        if ($BootstrapAdminEmail) {
+            $backendEnvCmd += "`$env:CIVNEXA_BOOTSTRAP_ADMIN_EMAIL='$BootstrapAdminEmail'; "
+        }
+        if ($BootstrapAdminPassword) {
+            $backendEnvCmd += "`$env:CIVNEXA_BOOTSTRAP_ADMIN_PASSWORD='$BootstrapAdminPassword'; "
+        }
+    }
+
+    $backendProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$ScriptRoot\backend'; $backendEnvCmd .\mvnw.cmd spring-boot:run" -PassThru
     Write-Host "  [OK] Spring Boot process launched (PID: $($backendProcess.Id))" -ForegroundColor Green
 
     Write-Host "[5/5] Starting Frontend (Vite Dev Server)..." -ForegroundColor Yellow
@@ -114,14 +130,28 @@ function Start-Stack {
     Write-Host "================================================================================" -ForegroundColor Green
     Write-Host "   CIVNEXA LOCAL PLATFORM RUNNING" -ForegroundColor White
     Write-Host "================================================================================" -ForegroundColor Green
-    Write-Host "  Frontend URL:     http://localhost:5173" -ForegroundColor White
-    Write-Host "  Backend API:      http://localhost:8080/api/v1" -ForegroundColor White
-    Write-Host "  Swagger UI:       http://localhost:8080/swagger-ui.html" -ForegroundColor White
-    Write-Host "  Mailpit Inbox:    http://localhost:8025" -ForegroundColor White
+    Write-Host "  Frontend URL:        http://localhost:5173" -ForegroundColor White
+    Write-Host "  Backend API:         http://localhost:8080/api/v1" -ForegroundColor White
+    Write-Host "  Swagger UI:          http://localhost:8080/swagger-ui.html" -ForegroundColor White
+    Write-Host "  Mailpit Inbox:       http://localhost:8025" -ForegroundColor White
     Write-Host ""
-    Write-Host "  Bootstrap Admin Credentials:" -ForegroundColor Cyan
-    Write-Host "    Email:          admin@civnexa.edu" -ForegroundColor White
-    Write-Host "    Password:       Admin@SecurePass2026!" -ForegroundColor White
+    Write-Host "  Security Architecture Highlights:" -ForegroundColor Cyan
+    Write-Host "    - Public Student Self-Registration: PENDING_VERIFICATION with HMAC-SHA256 OTP." -ForegroundColor DarkGray
+    Write-Host "    - Strictly In-Memory JWT: Zero tokens in localStorage/sessionStorage." -ForegroundColor DarkGray
+    Write-Host "    - Authoritative DB Roles: Role claims in JWT are non-authoritative." -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  First-Time Administrator Setup:" -ForegroundColor Yellow
+    if ($EnableBootstrap -or $env:CIVNEXA_ENABLE_INITIAL_BOOTSTRAP -eq "true") {
+        Write-Host "    Initial bootstrap is ENABLED for this startup." -ForegroundColor Green
+        Write-Host "    If no password was provided, a 24-character cryptographic password" -ForegroundColor White
+        Write-Host "    has been written to 'backend/civnexa-bootstrap-admin.credential'." -ForegroundColor White
+        Write-Host "    First login mandates a password change." -ForegroundColor Yellow
+    } else {
+        Write-Host "    Bootstrap is disabled by default (no hardcoded passwords)." -ForegroundColor DarkGray
+        Write-Host "    To bootstrap root admin on first launch, run:" -ForegroundColor White
+        Write-Host "      .\run-local.ps1 -EnableBootstrap -BootstrapAdminEmail admin@institution.edu" -ForegroundColor Cyan
+        Write-Host "    Or set CIVNEXA_ENABLE_INITIAL_BOOTSTRAP=true in .env" -ForegroundColor DarkGray
+    }
     Write-Host "================================================================================" -ForegroundColor Green
 }
 

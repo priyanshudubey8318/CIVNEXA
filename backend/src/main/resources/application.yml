@@ -53,11 +53,19 @@ civnexa:
     issuer: ${JWT_ISSUER:CIVNEXA}
   auth:
     public-registration-enabled: ${PUBLIC_REGISTRATION_ENABLED:true}
+  otp:
+    hmac-secret: ${CIVNEXA_OTP_HMAC_SECRET:civnexa_institutional_otp_hmac_secret_key_at_least_256_bits_for_sha256}
   bootstrap:
     admin:
+      enabled: ${CIVNEXA_ENABLE_INITIAL_BOOTSTRAP:false}
       email: ${CIVNEXA_BOOTSTRAP_ADMIN_EMAIL:}
       password: ${CIVNEXA_BOOTSTRAP_ADMIN_PASSWORD:}
       name: ${CIVNEXA_BOOTSTRAP_ADMIN_NAME:Platform Administrator}
+  ai:
+    provider: ${CIVNEXA_AI_PROVIDER:GEMINI} # GEMINI or LOCAL
+    api-key: ${CIVNEXA_AI_API_KEY:}
+    model: ${CIVNEXA_AI_MODEL:gemini-2.5-flash}
+    timeout-ms: ${CIVNEXA_AI_TIMEOUT_MS:10000}
   mail:
     enabled: ${CIVNEXA_MAIL_ENABLED:true}
     from: ${CIVNEXA_MAIL_FROM:no-reply@civnexa.edu}

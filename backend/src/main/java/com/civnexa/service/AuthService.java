@@ -18,6 +18,7 @@ import com.civnexa.security.PasswordValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -26,7 +27,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
@@ -63,6 +67,12 @@ public class AuthService {
 
     // Dynamically generated dummy hash guaranteeing exact work factor parity with the configured PasswordEncoder
     private final String dummyHash;
+
+    @Value("${civnexa.otp.hmac-secret:civnexa_institutional_otp_hmac_secret_key_at_least_256_bits_for_sha256}")
+    private String otpHmacSecret;
+
+    @Value("${civnexa.jwt.secret:}")
+    private String jwtSecret;
 
     @Autowired
     public AuthService(UserRepository userRepository,
@@ -259,8 +269,8 @@ public class AuthService {
         verification.setAttempts(verification.getAttempts() + 1);
         emailVerificationRepository.saveAndFlush(verification);
 
-        // Constant-time hash comparison
-        String computedHash = hashOtp(request.getOtp().trim(), normalizedEmail);
+        // Keyed HMAC-SHA256 constant-time comparison
+        String computedHash = computeOtpHmac(request.getOtp().trim(), normalizedEmail);
         boolean matches = MessageDigest.isEqual(
                 computedHash.getBytes(StandardCharsets.UTF_8),
                 verification.getOtpHash().getBytes(StandardCharsets.UTF_8)
@@ -333,7 +343,7 @@ public class AuthService {
      */
     private void dispatchNewVerificationOtp(String email) {
         String otp = generateOtp();
-        String otpHash = hashOtp(otp, email);
+        String otpHash = computeOtpHmac(otp, email);
 
         Instant expiresAt = Instant.now().plus(10, ChronoUnit.MINUTES);
         Instant resendAvailableAt = Instant.now().plus(60, ChronoUnit.SECONDS);
@@ -357,21 +367,53 @@ public class AuthService {
     }
 
     /**
-     * Produces a SHA-256 hash of the OTP salted with a prefix and the recipient email.
+     * Computes keyed HMAC-SHA256 digest using configured CIVNEXA_OTP_HMAC_SECRET.
+     * Enforces that the secret is distinct from the JWT secret and meets 256-bit strength.
      */
-    public static String hashOtp(String otp, String email) {
+    public String computeOtpHmac(String otp, String email) {
+        validateOtpHmacSecret();
+        return computeOtpHmacWithSecret(otp, email, this.otpHmacSecret);
+    }
+
+    public static String computeOtpHmacWithSecret(String otp, String email, String secret) {
+        if (secret == null || secret.trim().length() < 32) {
+            throw new IllegalStateException("CIVNEXA_OTP_HMAC_SECRET is missing or does not meet the minimum 256-bit requirement.");
+        }
         try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            String salted = "civnexa_otp_salt_" + email.toLowerCase() + "_" + otp;
-            byte[] digest = md.digest(salted.getBytes(StandardCharsets.UTF_8));
+            Mac mac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKey = new SecretKeySpec(secret.trim().getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+            mac.init(secretKey);
+            String payload = email.trim().toLowerCase() + ":" + otp.trim();
+            byte[] hmacBytes = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder();
-            for (byte b : digest) {
+            for (byte b : hmacBytes) {
                 sb.append(String.format("%02x", b));
             }
             return sb.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 algorithm unavailable", e);
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            throw new RuntimeException("HMAC-SHA256 computation failed", e);
         }
+    }
+
+    public void validateOtpHmacSecret() {
+        if (otpHmacSecret == null || otpHmacSecret.trim().length() < 32) {
+            throw new IllegalStateException("CIVNEXA_OTP_HMAC_SECRET must be configured and at least 32 characters long.");
+        }
+        if (jwtSecret != null && !jwtSecret.trim().isEmpty() && otpHmacSecret.trim().equals(jwtSecret.trim())) {
+            throw new IllegalStateException("Security Violation: CIVNEXA_OTP_HMAC_SECRET must not share the same secret as JWT token signing.");
+        }
+    }
+
+    public String hashOtp(String otp, String email) {
+        return computeOtpHmac(otp, email);
+    }
+
+    public void setOtpHmacSecret(String otpHmacSecret) {
+        this.otpHmacSecret = otpHmacSecret;
+    }
+
+    public void setJwtSecret(String jwtSecret) {
+        this.jwtSecret = jwtSecret;
     }
 
     /**

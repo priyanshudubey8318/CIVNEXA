@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+*.credential
+civnexa-bootstrap-admin.credential
 
 # Temporary and scratch files
 scratch/

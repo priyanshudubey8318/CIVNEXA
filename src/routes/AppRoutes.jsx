@@ -35,6 +35,10 @@ import StudentComplaintsPage from '../pages/student/StudentComplaintsPage';
 import StudentNotificationsPage from '../pages/student/StudentNotificationsPage';
 import StudentSupportPage from '../pages/student/StudentSupportPage';
 import StudentAppealsPage from '../pages/student/StudentAppealsPage';
+import StudentDigitalIdPage from '../pages/student/StudentDigitalIdPage';
+import QrScannerPage from '../pages/qr/QrScannerPage';
+import EventAttendancePage from '../pages/qr/EventAttendancePage';
+import AiAssistantPage from '../pages/ai/AiAssistantPage';
 import Student360Page from '../pages/hod/Student360Page';
 import AppellateReviewPage from '../pages/appeals/AppellateReviewPage';
 import UserManagementPage from '../pages/admin/UserManagementPage';
@@ -183,6 +187,9 @@ export const AppRoutes = () => {
           <Route element={<RequireRole allowedRoles={ROUTE_PERMISSIONS['/student/profile']} />}>
             <Route path="student/profile" element={<StudentProfilePage />} />
           </Route>
+          <Route element={<RequireRole allowedRoles={ROUTE_PERMISSIONS['/student/digital-id']} />}>
+            <Route path="student/digital-id" element={<StudentDigitalIdPage />} />
+          </Route>
           <Route element={<RequireRole allowedRoles={ROUTE_PERMISSIONS['/student/complaints']} />}>
             <Route path="student/complaints" element={<StudentComplaintsPage />} />
           </Route>
@@ -198,6 +205,15 @@ export const AppRoutes = () => {
           <Route element={<RequireRole allowedRoles={ROUTE_PERMISSIONS['/student/support']} />}>
             <Route path="student/support" element={<StudentSupportPage />} />
           </Route>
+
+          {/* QR Scanner & Dynamic Attendance */}
+          <Route element={<RequireRole allowedRoles={ROUTE_PERMISSIONS['/scanner']} />}>
+            <Route path="scanner" element={<QrScannerPage />} />
+          </Route>
+          <Route path="attendance/session/:sessionCode" element={<EventAttendancePage />} />
+
+          {/* Institutional AI Assistant */}
+          <Route path="ai-assistant" element={<AiAssistantPage />} />
 
           {/* 404 Catch-All */}
           <Route path="404" element={<NotFoundPage />} />

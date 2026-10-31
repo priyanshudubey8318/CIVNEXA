@@ -64,6 +64,8 @@ public class EmailVerificationIntegrationTests {
                 emailService,
                 auditService
         );
+        authService.setOtpHmacSecret("civnexa_test_isolated_otp_hmac_secret_key_at_least_256_bits_for_testing");
+        authService.setJwtSecret("civnexa_test_isolated_secret_key_at_least_256_bits_long_for_test_environment_2026");
     }
 
     @Test
@@ -102,7 +104,7 @@ public class EmailVerificationIntegrationTests {
 
         // Manually create a known OTP for test determinism
         String testOtp = "123456";
-        String testHash = AuthService.hashOtp(testOtp, "julian.vance@institution.edu");
+        String testHash = authService.computeOtpHmac(testOtp, "julian.vance@institution.edu");
 
         EmailVerification customVerif = new EmailVerification(
                 "julian.vance@institution.edu",
@@ -227,5 +229,142 @@ public class EmailVerificationIntegrationTests {
         assertThatThrownBy(() -> authService.verifyUserCredentials(loginReq))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
+    }
+
+    @Test
+    @DisplayName("Email verification rejects expired OTP code")
+    void testExpiredOtpRejection() {
+        RegisterRequest req = new RegisterRequest();
+        req.setName("Tara Bell");
+        req.setEmail("tara.bell@institution.edu");
+        req.setPassword("SecurePass2026!");
+        req.setRollNumber("ROLL-VERIF-007");
+
+        authService.registerStudent(req);
+
+        String testOtp = "654321";
+        String testHash = authService.computeOtpHmac(testOtp, "tara.bell@institution.edu");
+
+        // Expired in past
+        EmailVerification expired = new EmailVerification(
+                "tara.bell@institution.edu",
+                testHash,
+                Instant.now().minus(5, ChronoUnit.MINUTES),
+                Instant.now().minus(10, ChronoUnit.MINUTES)
+        );
+        emailVerificationRepository.saveAndFlush(expired);
+
+        VerifyEmailRequest verifyReq = new VerifyEmailRequest("tara.bell@institution.edu", testOtp);
+        assertThatThrownBy(() -> authService.verifyEmail(verifyReq))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiEx = (ApiException) ex;
+                    assertThat(apiEx.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(apiEx.getMessage()).contains("expired");
+                });
+    }
+
+    @Test
+    @DisplayName("Email verification rejects reused OTP token")
+    void testReusedOtpRejection() {
+        RegisterRequest req = new RegisterRequest();
+        req.setName("Leo Chen");
+        req.setEmail("leo.chen@institution.edu");
+        req.setPassword("SecurePass2026!");
+        req.setRollNumber("ROLL-VERIF-008");
+
+        authService.registerStudent(req);
+
+        String testOtp = "112233";
+        String testHash = authService.computeOtpHmac(testOtp, "leo.chen@institution.edu");
+
+        EmailVerification alreadyUsed = new EmailVerification(
+                "leo.chen@institution.edu",
+                testHash,
+                Instant.now().plus(10, ChronoUnit.MINUTES),
+                Instant.now().plus(60, ChronoUnit.SECONDS)
+        );
+        alreadyUsed.setVerifiedAt(Instant.now());
+        emailVerificationRepository.saveAndFlush(alreadyUsed);
+
+        VerifyEmailRequest verifyReq = new VerifyEmailRequest("leo.chen@institution.edu", testOtp);
+        assertThatThrownBy(() -> authService.verifyEmail(verifyReq))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiEx = (ApiException) ex;
+                    assertThat(apiEx.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(apiEx.getMessage()).contains("already been used");
+                });
+    }
+
+    @Test
+    @DisplayName("Email verification enforces 5-attempt maximum lockout threshold")
+    void testMaxAttemptsLockout() {
+        RegisterRequest req = new RegisterRequest();
+        req.setName("Siddharth Rao");
+        req.setEmail("siddharth.rao@institution.edu");
+        req.setPassword("SecurePass2026!");
+        req.setRollNumber("ROLL-VERIF-009");
+
+        authService.registerStudent(req);
+
+        String testOtp = "778899";
+        String testHash = authService.computeOtpHmac(testOtp, "siddharth.rao@institution.edu");
+
+        EmailVerification maxedOut = new EmailVerification(
+                "siddharth.rao@institution.edu",
+                testHash,
+                Instant.now().plus(10, ChronoUnit.MINUTES),
+                Instant.now().plus(60, ChronoUnit.SECONDS)
+        );
+        maxedOut.setAttempts(5);
+        emailVerificationRepository.saveAndFlush(maxedOut);
+
+        VerifyEmailRequest verifyReq = new VerifyEmailRequest("siddharth.rao@institution.edu", testOtp);
+        assertThatThrownBy(() -> authService.verifyEmail(verifyReq))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiEx = (ApiException) ex;
+                    assertThat(apiEx.getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+                    assertThat(apiEx.getMessage()).contains("Maximum verification attempts exceeded");
+                });
+    }
+
+    @Test
+    @DisplayName("HMAC secret missing or insufficient length throws IllegalStateException")
+    void testMissingOrWeakHmacSecretFails() {
+        AuthService brokenService = new AuthService(
+                userRepository,
+                departmentRepository,
+                passwordEncoder,
+                emailVerificationRepository,
+                emailService,
+                auditService
+        );
+        brokenService.setOtpHmacSecret("too-short");
+
+        assertThatThrownBy(() -> brokenService.computeOtpHmac("123456", "test@civnexa.edu"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("CIVNEXA_OTP_HMAC_SECRET");
+    }
+
+    @Test
+    @DisplayName("HMAC secret matching JWT signing secret is rejected as security violation")
+    void testHmacSecretMatchesJwtSecretViolation() {
+        AuthService violatedService = new AuthService(
+                userRepository,
+                departmentRepository,
+                passwordEncoder,
+                emailVerificationRepository,
+                emailService,
+                auditService
+        );
+        String sharedKey = "shared_key_value_that_is_at_least_32_characters_long_for_security";
+        violatedService.setOtpHmacSecret(sharedKey);
+        violatedService.setJwtSecret(sharedKey);
+
+        assertThatThrownBy(() -> violatedService.computeOtpHmac("123456", "test@civnexa.edu"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("must not share the same secret");
     }
 }

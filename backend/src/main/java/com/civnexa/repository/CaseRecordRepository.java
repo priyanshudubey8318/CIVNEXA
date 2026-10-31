@@ -19,6 +19,8 @@ public interface CaseRecordRepository extends JpaRepository<CaseRecord, Long> {
 
     Optional<CaseRecord> findByCaseNumber(String caseNumber);
 
+    Optional<CaseRecord> findByQrTrackingToken(String qrTrackingToken);
+
     List<CaseRecord> findByStatus(CaseStatus status);
 
     List<CaseRecord> findByCaseType(CaseType caseType);

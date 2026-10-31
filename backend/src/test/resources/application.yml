@@ -35,10 +35,18 @@ civnexa:
     issuer: CIVNEXA
   auth:
     public-registration-enabled: true
+  otp:
+    hmac-secret: civnexa_test_isolated_otp_hmac_secret_key_at_least_256_bits_for_testing
   bootstrap:
     admin:
+      enabled: false
       email: ""
       password: ""
+  ai:
+    provider: LOCAL
+    api-key: ""
+    model: gemini-2.5-flash
+    timeout-ms: 5000
   mail:
     enabled: false
     from: no-reply@civnexa.edu
