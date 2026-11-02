@@ -86,6 +86,35 @@ export const evidenceService = {
     await new Promise((r) => setTimeout(r, 40));
     let items = loadEvidence();
 
+    if (getAuthToken()) {
+      try {
+        const queryUrl = caseId && caseId !== 'ALL' ? `/evidence?caseId=${caseId}` : '/evidence';
+        const resp = await apiClient.get(queryUrl);
+        const remoteData = resp?.data || resp;
+        if (Array.isArray(remoteData) && remoteData.length > 0) {
+          const remoteMapped = remoteData.map((e) => ({
+            id: String(e.id),
+            fileId: e.evidenceNumber || String(e.id),
+            caseId: String(e.caseId || ''),
+            caseNumber: e.caseNumber || `CX-${e.caseId || '001'}`,
+            name: e.fileName || e.title || 'Evidence Item',
+            typeCategory: e.fileType || 'DOCUMENT',
+            size: e.fileSize || '500 KB',
+            reviewStatus: e.reviewStatus || 'UNREVIEWED',
+            uploadedAt: e.createdAt || new Date().toISOString(),
+            uploaderName: e.uploadedByName || 'Investigator',
+            isConfidential: Boolean(e.confidential),
+            permittedRoles: ['SUPER_ADMIN', 'DEAN', 'PROCTOR', 'HOD', 'STUDENT'],
+          }));
+          const remoteIds = new Set(remoteMapped.map((r) => r.id));
+          const localOnly = items.filter((loc) => !remoteIds.has(loc.id));
+          items = [...remoteMapped, ...localOnly];
+        }
+      } catch (err) {
+        // graceful offline fallback
+      }
+    }
+
     // Role-based confidentiality filter
     if (currentUser) {
       const userRole = currentUser.role || 'STUDENT';

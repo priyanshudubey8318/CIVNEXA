@@ -472,6 +472,31 @@ class AdminService {
   // 3. DEPARTMENT MANAGEMENT
   // ==========================================
 
+  async syncDepartmentsWithBackend() {
+    if (!getAuthToken()) return this.getDepartments();
+    try {
+      const resp = await apiClient.get('/departments');
+      const data = resp?.data || resp;
+      if (Array.isArray(data) && data.length > 0) {
+        const mapped = data.map((d) => ({
+          id: d.id ? `DEPT-${d.id}` : `DEPT-${d.code}`,
+          numericId: d.id,
+          code: d.code,
+          name: d.name,
+          hodName: d.hodName || 'Pending Appointment',
+          contactEmail: d.contactEmail || `hod.${d.code.toLowerCase()}@civnexa.edu`,
+          status: d.active !== false ? 'ACTIVE' : 'INACTIVE',
+          description: d.description || '',
+        }));
+        localStorage.setItem(DEPTS_STORAGE_KEY, JSON.stringify(mapped));
+        return mapped;
+      }
+    } catch (e) {
+      console.warn('Could not sync departments from backend', e);
+    }
+    return this.getDepartments();
+  }
+
   getDepartments({ search = '' } = {}) {
     let depts = [];
     try {
@@ -514,6 +539,23 @@ class AdminService {
       description: description || '',
     };
 
+    if (getAuthToken()) {
+      apiClient.post('/departments', {
+        name: newDept.name,
+        code: newDept.code,
+        hodName: newDept.hodName,
+        contactEmail: newDept.contactEmail,
+        description: newDept.description,
+      }).then((resp) => {
+        const saved = resp?.data || resp;
+        if (saved?.id) {
+          newDept.numericId = saved.id;
+          newDept.id = `DEPT-${saved.id}`;
+          localStorage.setItem(DEPTS_STORAGE_KEY, JSON.stringify(depts));
+        }
+      }).catch((e) => console.warn('Backend department creation notice', e));
+    }
+
     depts.push(newDept);
     localStorage.setItem(DEPTS_STORAGE_KEY, JSON.stringify(depts));
 
@@ -533,7 +575,22 @@ class AdminService {
     const idx = depts.findIndex((d) => d.id === deptId || d.code === deptId);
     if (idx === -1) throw new Error('Department not found.');
 
-    depts[idx] = { ...depts[idx], ...updates };
+    const dept = depts[idx];
+
+    if (getAuthToken()) {
+      const targetId = dept.numericId || (dept.id?.startsWith('DEPT-') && !isNaN(Number(dept.id.replace('DEPT-', ''))) ? dept.id.replace('DEPT-', '') : null);
+      if (targetId) {
+        apiClient.put(`/departments/${targetId}`, {
+          name: updates.name || dept.name,
+          code: dept.code,
+          hodName: updates.hodName || dept.hodName,
+          contactEmail: updates.contactEmail || dept.contactEmail,
+          description: updates.description || dept.description,
+        }).catch((e) => console.warn('Backend department update notice', e));
+      }
+    }
+
+    depts[idx] = { ...dept, ...updates };
     localStorage.setItem(DEPTS_STORAGE_KEY, JSON.stringify(depts));
     return depts[idx];
   }
@@ -561,6 +618,14 @@ class AdminService {
       throw new Error(
         `Cannot remove department "${dept.name}" because active case records are linked to this academic unit. Please deactivate it instead.`
       );
+    }
+
+    if (getAuthToken()) {
+      const targetId = dept.numericId || (dept.id?.startsWith('DEPT-') && !isNaN(Number(dept.id.replace('DEPT-', ''))) ? dept.id.replace('DEPT-', '') : null);
+      if (targetId) {
+        apiClient.delete(`/departments/${targetId}`)
+          .catch((e) => console.warn('Backend department delete notice', e));
+      }
     }
 
     const filtered = depts.filter((d) => d.id !== dept.id && d.code !== dept.code);

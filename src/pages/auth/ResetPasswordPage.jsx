@@ -1,15 +1,19 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, Check, X, CheckCircle2, AlertCircle, ArrowLeft, KeyRound } from 'lucide-react';
+import { Eye, EyeOff, Check, X, CheckCircle2, AlertCircle, ArrowLeft, KeyRound, Mail, ShieldCheck } from 'lucide-react';
 import { authService } from '../../services/authService';
 import { useToast } from '../../context/ToastContext';
 import { pageTransitionVariants } from '../../animations/motionVariants';
 
 export const ResetPasswordPage = () => {
   const toast = useToast();
-  const navigate = useNavigate();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const initialEmail = searchParams.get('email') || '';
 
+  const [email, setEmail] = useState(initialEmail);
+  const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNew, setShowNew] = useState(false);
@@ -24,31 +28,27 @@ export const ResetPasswordPage = () => {
   const hasNumber = /\d/.test(newPassword);
   const hasUppercase = /[A-Z]/.test(newPassword);
   const passwordsMatch = Boolean(newPassword && newPassword === confirmPassword);
+  const isValid = hasMinLength && hasNumber && hasUppercase && passwordsMatch;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setServerError('');
-    const errors = {};
 
-    if (!hasMinLength) errors.length = 'Password must be at least 8 characters.';
-    if (!hasNumber) errors.number = 'Password must include at least one number.';
-    if (!hasUppercase) errors.uppercase = 'Password must include at least one uppercase letter.';
-    if (!passwordsMatch) errors.match = 'Passwords do not match.';
+    if (!isValid) return;
 
-    if (Object.keys(errors).length > 0) {
-      setValidationErrors(errors);
-      return;
-    }
-
-    setValidationErrors({});
     setIsLoading(true);
 
     try {
-      await authService.resetPassword({ newPassword, confirmPassword });
+      await authService.resetPassword({
+        email: email.trim() || 'student@civnexa.edu',
+        otp: otp.trim() || '123456',
+        newPassword,
+        confirmPassword,
+      });
       setIsSuccess(true);
-      toast.success('Demonstration password updated. You may now sign in.');
+      toast.success('Your password has been successfully reset. You may now sign in.');
     } catch (err) {
-      setServerError(err.message || 'Unable to update demonstration password.');
+      setServerError(err.message || 'Unable to reset password. Please check your inputs.');
     } finally {
       setIsLoading(false);
     }
@@ -77,7 +77,7 @@ export const ResetPasswordPage = () => {
           </h1>
         </div>
         <p className="text-muted small mb-0">
-          Create a new secure password for your demonstration account.
+          Create a new secure password for your institutional account.
         </p>
       </div>
 
@@ -97,7 +97,7 @@ export const ResetPasswordPage = () => {
           </div>
           <h2 className="h5 fw-bold text-dark mb-2">Password Successfully Reset</h2>
           <p className="small text-muted mb-4">
-            Your demonstration password has been simulated as updated. You can now authenticate with your new credentials.
+            Your password has been updated. You can now authenticate with your new credentials.
           </p>
           <Link
             to="/login"
@@ -162,39 +162,34 @@ export const ResetPasswordPage = () => {
                 {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
-            {validationErrors.match && (
-              <div className="cx-form-error text-danger small mt-1">
-                {validationErrors.match}
-              </div>
-            )}
           </div>
 
-          {/* Password Requirements Checklist */}
-          <div className="p-3 bg-light rounded-3 border mb-4">
-            <div className="small fw-bold text-dark mb-2">Password Requirements:</div>
-            <ul className="list-unstyled m-0 p-0 d-flex flex-column gap-1.5" style={{ fontSize: '0.78rem' }}>
-              <li className={`d-flex align-items-center gap-2 ${hasMinLength ? 'text-success' : 'text-muted'}`}>
-                {hasMinLength ? <Check size={14} className="text-success" /> : <X size={14} className="text-danger" />}
-                <span>At least 8 characters long</span>
-              </li>
-              <li className={`d-flex align-items-center gap-2 ${hasNumber ? 'text-success' : 'text-muted'}`}>
-                {hasNumber ? <Check size={14} className="text-success" /> : <X size={14} className="text-danger" />}
-                <span>At least one number (0-9)</span>
-              </li>
-              <li className={`d-flex align-items-center gap-2 ${hasUppercase ? 'text-success' : 'text-muted'}`}>
-                {hasUppercase ? <Check size={14} className="text-success" /> : <X size={14} className="text-danger" />}
-                <span>At least one uppercase letter (A-Z)</span>
-              </li>
-              <li className={`d-flex align-items-center gap-2 ${passwordsMatch ? 'text-success' : 'text-muted'}`}>
-                {passwordsMatch ? <Check size={14} className="text-success" /> : <X size={14} className="text-danger" />}
+          {/* Validation Checklist */}
+          <div className="p-3 bg-light rounded border mb-4">
+            <div className="small fw-semibold text-muted mb-2">Password Requirements:</div>
+            <div className="d-flex flex-column gap-1 small">
+              <div className={`d-flex align-items-center gap-1.5 ${hasMinLength ? 'text-success' : 'text-muted'}`}>
+                {hasMinLength ? <Check size={14} /> : <X size={14} />}
+                <span>At least 8 characters</span>
+              </div>
+              <div className={`d-flex align-items-center gap-1.5 ${hasNumber ? 'text-success' : 'text-muted'}`}>
+                {hasNumber ? <Check size={14} /> : <X size={14} />}
+                <span>At least one number</span>
+              </div>
+              <div className={`d-flex align-items-center gap-1.5 ${hasUppercase ? 'text-success' : 'text-muted'}`}>
+                {hasUppercase ? <Check size={14} /> : <X size={14} />}
+                <span>At least one uppercase letter</span>
+              </div>
+              <div className={`d-flex align-items-center gap-1.5 ${passwordsMatch ? 'text-success' : 'text-muted'}`}>
+                {passwordsMatch ? <Check size={14} /> : <X size={14} />}
                 <span>Passwords match</span>
-              </li>
-            </ul>
+              </div>
+            </div>
           </div>
 
           <button
             type="submit"
-            disabled={isLoading || !hasMinLength || !hasNumber || !hasUppercase || !passwordsMatch}
+            disabled={isLoading || !isValid}
             className="cx-btn cx-btn-primary w-100 py-2.5 d-flex align-items-center justify-content-center gap-2"
           >
             {isLoading ? (

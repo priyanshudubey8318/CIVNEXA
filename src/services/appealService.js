@@ -95,6 +95,44 @@ class AppealService {
   } = {}) {
     let items = this._getAllAppeals();
 
+    if (getAuthToken()) {
+      try {
+        const resp = await apiClient.get('/appeals');
+        const remoteData = resp?.data || resp;
+        if (Array.isArray(remoteData) && remoteData.length > 0) {
+          const remoteMapped = remoteData.map((a) => ({
+            id: a.appealNumber || String(a.id),
+            numericId: a.id,
+            appealNumber: a.appealNumber,
+            caseId: String(a.caseId || ''),
+            caseNumber: a.caseNumber || `CX-${a.caseId || '001'}`,
+            caseTitle: a.caseTitle || `Disciplinary Matter (${a.caseNumber || 'CX-001'})`,
+            appellant: {
+              id: a.studentId || 1,
+              name: a.studentName || 'Student Appellant',
+              rollNo: a.studentRollNumber || '22CSE041',
+              email: a.studentEmail || 'student@civnexa.edu',
+              department: a.studentDepartment || 'Computer Science & Engineering',
+              departmentCode: 'CSE',
+            },
+            status: a.status || 'SUBMITTED',
+            statusLabel: a.status || 'Submitted',
+            grounds: [a.grounds || 'PROCEDURAL_DEFECT'],
+            groundsSummary: a.grounds || 'Procedural Reconsideration',
+            explanation: a.explanation || '',
+            reliefSought: a.reliefSought || '',
+            submittedAt: a.createdAt || new Date().toISOString(),
+            updatedAt: a.updatedAt || a.createdAt || new Date().toISOString(),
+          }));
+          const remoteIds = new Set(remoteMapped.map((r) => r.appealNumber));
+          const localOnly = items.filter((loc) => !remoteIds.has(loc.appealNumber) && !remoteIds.has(loc.id));
+          items = [...remoteMapped, ...localOnly];
+        }
+      } catch (err) {
+        // graceful offline fallback
+      }
+    }
+
     // Role-based visibility scoping
     if (currentUser && currentUser.role === 'STUDENT') {
       items = items.filter(
@@ -276,7 +314,8 @@ class AppealService {
     if (getAuthToken()) {
       try {
         const resp = await apiClient.post('/appeals', {
-          caseId: Number(caseId) || 1,
+          caseId: !isNaN(Number(caseId)) ? Number(caseId) : null,
+          caseNumber: caseNumber || (typeof caseId === 'string' ? caseId : null),
           grounds: groundsSummary,
           explanation: explanation.trim(),
           reliefSought: reliefSought || 'Reconsideration of sanction',

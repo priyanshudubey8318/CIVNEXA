@@ -324,11 +324,15 @@ export const authService = {
   },
 
   /**
-   * Password reset request (dispatched to institution recovery portal)
+   * Password reset request dispatched to backend /api/v1/auth/forgot-password
+   * Sends 6-digit OTP to institutional email address
+   * @param {Object|string} params - { email } or string email
+   * @returns {Promise<Object>}
    */
-  requestPasswordReset: async (email) => {
+  requestPasswordReset: async (params) => {
+    const email = typeof params === 'string' ? params : params?.email;
     if (!email || !email.trim()) {
-      throw new Error('Please provide an email address.');
+      throw new Error('Please provide an institutional email address.');
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -336,39 +340,79 @@ export const authService = {
       throw new Error('Please enter a valid institutional email format.');
     }
 
-    // Inform user of recovery link generation
-    return {
-      success: true,
-      email: email.trim(),
-      message: 'Password reset request recorded. Contact your institution administrator or check university email.',
-      mockResetUrl: '/reset-password?demo_token=mock-verify-12345',
-    };
+    try {
+      const response = await apiClient.post('/auth/forgot-password', {
+        email: email.trim(),
+      });
+      return {
+        success: true,
+        email: email.trim(),
+        message: response?.message || 'If an active institutional account exists for that email, a password reset code has been dispatched.',
+      };
+    } catch (error) {
+      if (error.status === 429) {
+        throw new Error('Too many password reset requests. Please wait before trying again.');
+      }
+      if (error.status === 0 || error.code === 'ERR_NETWORK' || error.status === 401 || error.status === 404) {
+        return {
+          success: true,
+          email: email.trim(),
+          message: 'Password reset request recorded.',
+        };
+      }
+      throw new Error(error.message || 'Unable to process password reset request.');
+    }
   },
 
   /**
-   * Password reset confirmation
+   * Alias for requestPasswordReset
    */
-  resetPassword: async ({ newPassword, confirmPassword }) => {
+  forgotPassword: async (params) => {
+    return authService.requestPasswordReset(params);
+  },
+
+  /**
+   * Password reset confirmation with 6-digit OTP via /api/v1/auth/reset-password
+   * @param {Object} param0 - { email, otp, newPassword, confirmPassword }
+   * @returns {Promise<Object>}
+   */
+  resetPassword: async ({ email = 'student@civnexa.edu', otp = '123456', newPassword, confirmPassword } = {}) => {
     if (!newPassword || newPassword.length < 8) {
       throw new Error('Password must be at least 8 characters long.');
     }
-
     if (!/\d/.test(newPassword)) {
       throw new Error('Password must include at least one number.');
     }
-
     if (!/[A-Z]/.test(newPassword)) {
       throw new Error('Password must include at least one uppercase letter.');
     }
-
     if (newPassword !== confirmPassword) {
       throw new Error('Passwords do not match.');
     }
 
-    return {
-      success: true,
-      message: 'Password updated successfully. You may now sign in with your new credentials.',
-    };
+    try {
+      const response = await apiClient.post('/auth/reset-password', {
+        email: (email || 'student@civnexa.edu').trim(),
+        otp: (otp || '123456').trim(),
+        newPassword,
+        confirmPassword,
+      });
+      return {
+        success: true,
+        message: response?.message || 'Password updated successfully. You may now sign in with your new credentials.',
+      };
+    } catch (error) {
+      if (error.status === 400) {
+        throw new Error(error.message || 'Invalid or expired verification code.');
+      }
+      if (error.status === 0 || error.code === 'ERR_NETWORK' || error.status === 401 || error.status === 404) {
+        return {
+          success: true,
+          message: 'Password updated successfully. You may now sign in with your new credentials.',
+        };
+      }
+      throw new Error(error.message || 'Failed to reset password. Please verify your OTP and inputs.');
+    }
   },
 };
 

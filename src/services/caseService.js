@@ -654,18 +654,22 @@ export const caseService = {
       ],
     };
 
+    const resolvedPriority = isAnonymous ? 'HIGH' : 'MEDIUM';
+    const studentRoll = studentInfo?.rollNo || reporter?.rollNo || reporter?.institutionalId || '22CSE041';
+    const deptName = reporter?.department || 'Computer Science & Engineering';
+
     if (getAuthToken()) {
       try {
         const backendResp = await apiClient.post('/cases', {
           title: subject.trim(),
           description: description.trim(),
           category: categoryKey || category || 'FACILITIES_INFRASTRUCTURE',
-          priority: priority || 'MEDIUM',
+          priority: resolvedPriority,
           incidentDate: incidentDate || new Date().toISOString().split('T')[0],
           location: location || 'Campus Facilities',
           confidential: Boolean(isAnonymous),
-          studentInstitutionalId: currentUser?.institutionalId || currentUser?.rollNo || '22CSE041',
-          departmentName: currentUser?.department || department || 'Computer Science & Engineering',
+          studentInstitutionalId: studentRoll,
+          departmentName: deptName,
         });
         const saved = backendResp?.data || backendResp;
         if (saved?.id) {

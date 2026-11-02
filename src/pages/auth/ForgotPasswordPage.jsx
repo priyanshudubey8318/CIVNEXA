@@ -30,7 +30,7 @@ export const ForgotPasswordPage = () => {
 
     setIsLoading(true);
     try {
-      await authService.requestPasswordReset(email);
+      await authService.requestPasswordReset(email.trim());
       setIsSubmitted(true);
     } catch (err) {
       setServerError(err.message || 'Unable to process recovery request.');
@@ -77,7 +77,7 @@ export const ForgotPasswordPage = () => {
             <h2 className="h6 mb-0 fw-bold">Recovery Request Processed</h2>
           </div>
           <p className="small text-muted mb-3" style={{ lineHeight: 1.5 }}>
-            A simulated password reset notice was generated for <strong>{email}</strong>.
+            If an active institutional account exists for <strong>{email}</strong>, a recovery code has been dispatched.
           </p>
           <div className="p-2.5 bg-white rounded border small text-muted mb-3">
             <div className="d-flex align-items-center gap-1 text-primary fw-bold mb-1">
@@ -85,14 +85,14 @@ export const ForgotPasswordPage = () => {
               <span>Demonstration Environment Note</span>
             </div>
             <span>
-              In production, an authenticated time-bound token is dispatched via university SMTP.
-              In this frontend prototype, you can test the password reset flow directly using the link below:
+              In production, an authenticated time-bound code is dispatched via university SMTP.
+              In this environment, you can test the password reset flow directly using the link below:
             </span>
           </div>
 
           <div className="d-flex flex-column gap-2">
             <Link
-              to="/reset-password?demo_email=verified"
+              to={`/reset-password?email=${encodeURIComponent(email)}`}
               className="cx-btn cx-btn-primary w-100 py-2 d-flex align-items-center justify-content-center gap-1.5"
             >
               <span>Proceed to Password Reset Demo</span>

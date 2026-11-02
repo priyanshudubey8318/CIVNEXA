@@ -36,7 +36,25 @@ export const DepartmentManagementPage = () => {
   const [formEmail, setFormEmail] = useState('');
   const [formDescription, setFormDescription] = useState('');
 
-  const loadDepartments = () => {
+  const loadDepartments = async () => {
+    if (adminService.syncDepartmentsWithBackend) {
+      try {
+        const list = await adminService.syncDepartmentsWithBackend();
+        if (Array.isArray(list) && list.length > 0) {
+          const filtered = searchQuery.trim()
+            ? list.filter((d) =>
+                d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                d.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (d.hodName && d.hodName.toLowerCase().includes(searchQuery.toLowerCase()))
+              )
+            : list;
+          setDepartments(filtered);
+          return;
+        }
+      } catch (e) {
+        // fallback
+      }
+    }
     const list = adminService.getDepartments({ search: searchQuery });
     setDepartments(list);
   };

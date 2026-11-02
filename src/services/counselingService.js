@@ -160,7 +160,8 @@ export const counselingService = {
       try {
         const resp = await apiClient.post('/counseling/referrals', {
           caseId: Number(caseId) || 1,
-          studentId: Number(studentId) || 1,
+          studentId: Number(studentId) || null,
+          studentRollOrEmail: studentRoll || (typeof studentId === 'string' ? studentId : null),
           reason: reason.trim(),
           priority: priority,
         });
