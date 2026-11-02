@@ -21,6 +21,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -372,5 +373,120 @@ public class AuthControllerTests {
                 .andExpect(jsonPath("$.message", containsString("Too many login attempts")));
 
         loginRateLimiter.resetAttempts("192.168.10.99");
+    }
+
+    @Test
+    @DisplayName("POST /auth/change-password changes authenticated user's password and clears passwordChangeRequired")
+    void testChangePasswordSuccess() throws Exception {
+        activeStudent.setPasswordChangeRequired(true);
+        userRepository.saveAndFlush(activeStudent);
+
+        String token = jwtTokenProvider.generateToken(activeStudent);
+        String json = "{\"currentPassword\":\"ValidP@ssw0rd123!\",\"newPassword\":\"NewSecurePass2026@\",\"confirmPassword\":\"NewSecurePass2026@\"}";
+
+        mockMvc.perform(post("/auth/change-password")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success", is(true)))
+                .andExpect(jsonPath("$.message", containsString("Password changed successfully")))
+                .andExpect(jsonPath("$.data.passwordChangeRequired", is(false)));
+
+        User reloaded = userRepository.findById(activeStudent.getId()).orElseThrow();
+        assertFalse(reloaded.isPasswordChangeRequired());
+        assertTrue(passwordEncoder.matches("NewSecurePass2026@", reloaded.getPasswordHash()));
+    }
+
+    @Test
+    @DisplayName("POST /auth/change-password rejects incorrect current password with HTTP 400")
+    void testChangePasswordIncorrectCurrent() throws Exception {
+        String token = jwtTokenProvider.generateToken(activeStudent);
+        String json = "{\"currentPassword\":\"WrongCurrentPass!1\",\"newPassword\":\"NewSecurePass2026@\",\"confirmPassword\":\"NewSecurePass2026@\"}";
+
+        mockMvc.perform(post("/auth/change-password")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success", is(false)))
+                .andExpect(jsonPath("$.message", containsString("Current password is incorrect")));
+    }
+
+    @Test
+    @DisplayName("POST /auth/change-password rejects mismatching confirmation password with HTTP 400")
+    void testChangePasswordMismatch() throws Exception {
+        String token = jwtTokenProvider.generateToken(activeStudent);
+        String json = "{\"currentPassword\":\"ValidP@ssw0rd123!\",\"newPassword\":\"NewSecurePass2026@\",\"confirmPassword\":\"DifferentPass2026@\"}";
+
+        mockMvc.perform(post("/auth/change-password")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success", is(false)))
+                .andExpect(jsonPath("$.message", containsString("do not match")));
+    }
+
+    @Test
+    @DisplayName("POST /auth/change-password rejects weak new password with HTTP 400")
+    void testChangePasswordWeakNewPassword() throws Exception {
+        String token = jwtTokenProvider.generateToken(activeStudent);
+        String json = "{\"currentPassword\":\"ValidP@ssw0rd123!\",\"newPassword\":\"weak\",\"confirmPassword\":\"weak\"}";
+
+        mockMvc.perform(post("/auth/change-password")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success", is(false)));
+    }
+
+    @Test
+    @DisplayName("POST /auth/change-password requires authentication and returns HTTP 401 when token missing")
+    void testChangePasswordUnauthenticated() throws Exception {
+        String json = "{\"currentPassword\":\"Password123!\",\"newPassword\":\"NewSecurePass2026@\",\"confirmPassword\":\"NewSecurePass2026@\"}";
+
+        mockMvc.perform(post("/auth/change-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success", is(false)));
+    }
+
+    @Test
+    @DisplayName("POST /auth/register accepts firstName and lastName and correctly maps combined name and rollNumber")
+    void testRegisterWithFirstAndLastName() throws Exception {
+        authController.setPublicRegistrationEnabled(true);
+
+        String json = "{\"firstName\":\"Rohan\",\"lastName\":\"Verma\",\"email\":\"rohan.verma@institution.edu\",\"password\":\"Secur3P@ssword2026\",\"role\":\"STUDENT\",\"institutionalId\":\"22CSE999\"}";
+
+        mockMvc.perform(post("/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success", is(true)))
+                .andExpect(jsonPath("$.data.email", is("rohan.verma@institution.edu")))
+                .andExpect(jsonPath("$.data.name", is("Rohan Verma")))
+                .andExpect(jsonPath("$.data.status", is("PENDING_VERIFICATION")));
+
+        User saved = userRepository.findByEmailIgnoreCase("rohan.verma@institution.edu").orElseThrow();
+        assertEquals("Rohan Verma", saved.getName());
+        assertEquals("22CSE999", saved.getRollNumber());
+    }
+
+    @Test
+    @DisplayName("POST /auth/register returns HTTP 409 Conflict when registering duplicate email")
+    void testRegisterDuplicateEmailReturns409() throws Exception {
+        authController.setPublicRegistrationEnabled(true);
+
+        String json = "{\"name\":\"Duplicate User\",\"email\":\"aarav.mehta@institution.edu\",\"password\":\"Secur3P@ssword2026\",\"role\":\"STUDENT\"}";
+
+        mockMvc.perform(post("/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success", is(false)))
+                .andExpect(jsonPath("$.message", containsString("already registered")));
     }
 }

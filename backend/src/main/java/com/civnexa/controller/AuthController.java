@@ -2,6 +2,7 @@ package com.civnexa.controller;
 
 import com.civnexa.dto.ApiResponse;
 import com.civnexa.dto.AuthResponse;
+import com.civnexa.dto.ChangePasswordRequest;
 import com.civnexa.dto.LoginRequest;
 import com.civnexa.dto.RegisterRequest;
 import com.civnexa.dto.ResendVerificationRequest;
@@ -158,6 +159,41 @@ public class AuthController {
         }
 
         return ResponseEntity.ok(ApiResponse.ok(UserResponse.fromEntity(user), "Current authenticated user profile retrieved successfully"));
+    }
+
+    /**
+     * Changes password for the currently authenticated user.
+     * Requires an authenticated session (Bearer JWT).
+     *
+     * @param request The password change payload
+     * @param principal The authenticated principal
+     * @param authentication The Spring Security authentication
+     * @return UserResponse with updated status and passwordChangeRequired=false
+     */
+    @PostMapping("/change-password")
+    public ResponseEntity<ApiResponse<UserResponse>> changePassword(
+            @Valid @RequestBody ChangePasswordRequest request,
+            @AuthenticationPrincipal CivnexaUserPrincipal principal,
+            Authentication authentication) {
+        User user = null;
+        if (principal != null) {
+            user = principal.getUser();
+        } else if (authentication != null && authentication.getPrincipal() instanceof User u) {
+            user = u;
+        } else if (authentication != null && authentication.getName() != null) {
+            user = userRepository.findByUserReference(authentication.getName())
+                    .orElse(null);
+            if (user == null) {
+                user = userRepository.findByEmailIgnoreCase(authentication.getName()).orElse(null);
+            }
+        }
+
+        if (user == null) {
+            throw new ApiException("Authentication required to change password", HttpStatus.UNAUTHORIZED);
+        }
+
+        UserResponse userResponse = authService.changePassword(user.getId(), request);
+        return ResponseEntity.ok(ApiResponse.ok(userResponse, "Password changed successfully"));
     }
 
     public boolean isPublicRegistrationEnabled() {

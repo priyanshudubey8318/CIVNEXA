@@ -308,10 +308,10 @@ export const UserManagementPage = () => {
                               flexShrink: 0,
                             }}
                           >
-                            {u.avatar || u.name.substring(0, 2).toUpperCase()}
+                            {u.avatar || (u.name ? u.name.substring(0, 2).toUpperCase() : 'U')}
                           </div>
                           <div>
-                            <strong className="text-dark small d-block">{u.name}</strong>
+                            <strong className="text-dark small d-block">{u.name || u.email || 'User'}</strong>
                             <span className="text-muted" style={{ fontSize: '0.7rem' }}>
                               ID: {u.employeeId || u.rollNo || u.id}
                             </span>

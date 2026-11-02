@@ -15,6 +15,8 @@ import { authService, mapBackendUserToFrontend } from '../services/authService';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { ToastProvider } from '../context/ToastContext';
 import LoginPage from '../pages/auth/LoginPage';
+import RegisterPage from '../pages/auth/RegisterPage';
+import SettingsPage from '../pages/SettingsPage';
 import RequireAuth from '../routes/guards/RequireAuth';
 import RequireRole from '../routes/guards/RequireRole';
 import UnauthorizedPage from '../pages/UnauthorizedPage';
@@ -152,6 +154,57 @@ describe('CIVNEXA BE-1.3-D Authentication Integration Tests', () => {
       expect(result.user.roleLabel).toBe('Dean / Central Admin');
     });
 
+    it('successfully processes login with nested backend response envelope { success, message, data: { accessToken, user } }', async () => {
+      const nestedBackendResponse = {
+        success: true,
+        message: 'Authentication successful',
+        data: {
+          accessToken: 'jwt-super-admin-token-999',
+          tokenType: 'Bearer',
+          expiresInMs: 900000,
+          user: {
+            id: 1,
+            email: 'admin@civnexa.edu',
+            name: 'Platform Administrator',
+            role: 'SUPER_ADMIN',
+            status: 'ACTIVE',
+            userReference: 'ADM-ROOT-001',
+            passwordChangeRequired: true,
+          },
+        },
+      };
+
+      vi.spyOn(apiClient, 'post').mockResolvedValueOnce(nestedBackendResponse);
+
+      const result = await authService.login({
+        email: 'admin@civnexa.edu',
+        password: 'ValidPassword@123',
+      });
+
+      expect(getAuthToken()).toBe('jwt-super-admin-token-999');
+      expect(result.token).toBe('jwt-super-admin-token-999');
+      expect(result.user).not.toBeNull();
+      expect(result.user.name).toBe('Platform Administrator');
+      expect(result.user.role).toBe('SUPER_ADMIN');
+      expect(result.user.roleLabel).toBe('Super Admin');
+      expect(result.user.userReference).toBe('ADM-ROOT-001');
+      expect(result.user.passwordChangeRequired).toBe(true);
+      expect(result.user.firstName).toBe('Platform');
+      expect(result.user.lastName).toBe('Administrator');
+    });
+
+    it('handles null or missing user payload safely in mapBackendUserToFrontend', () => {
+      expect(mapBackendUserToFrontend(null)).toBeNull();
+      expect(mapBackendUserToFrontend(undefined)).toBeNull();
+      expect(mapBackendUserToFrontend({})).toEqual(
+        expect.objectContaining({
+          role: 'STUDENT',
+          name: 'Institutional User',
+          status: 'ACTIVE',
+        })
+      );
+    });
+
     it('register captures 403 Forbidden and surfaces clear institutional policy notice', async () => {
       vi.spyOn(apiClient, 'post').mockRejectedValueOnce({
         status: 403,
@@ -211,10 +264,16 @@ describe('CIVNEXA BE-1.3-D Authentication Integration Tests', () => {
         <div>
           <span data-testid="auth-status">{auth.isAuthenticated ? 'authenticated' : 'unauthenticated'}</span>
           <span data-testid="user-role">{auth.currentUser?.role || 'NONE'}</span>
+          <span data-testid="user-name">{auth.currentUser?.name || 'NONE'}</span>
+          <span data-testid="is-super-admin">{auth.isSuperAdmin ? 'yes' : 'no'}</span>
           <span data-testid="is-dean">{auth.isDean ? 'yes' : 'no'}</span>
           <span data-testid="is-student">{auth.isStudent ? 'yes' : 'no'}</span>
-          <button onClick={() => auth.login({ email: 'dean@civnexa.edu', password: 'Password@123' })}>
+          <span data-testid="password-change">{auth.passwordChangeRequired ? 'yes' : 'no'}</span>
+          <button onClick={() => auth.login({ email: 'dean@civnexa.edu', password: 'Password@123' }).catch(() => {})}>
             Trigger Login
+          </button>
+          <button onClick={() => auth.login({ email: 'admin@civnexa.edu', password: 'SuperAdminPassword@123' }).catch(() => {})}>
+            Trigger Super Admin Login
           </button>
           <button onClick={() => auth.logout()}>Trigger Logout</button>
         </div>
@@ -268,6 +327,65 @@ describe('CIVNEXA BE-1.3-D Authentication Integration Tests', () => {
         expect(screen.getByTestId('user-role').textContent).toBe('NONE');
       });
     });
+
+    it('login with nested SUPER_ADMIN envelope correctly updates user.name, role, and isSuperAdmin', async () => {
+      vi.spyOn(apiClient, 'post').mockResolvedValueOnce({
+        success: true,
+        message: 'Authentication successful',
+        data: {
+          accessToken: 'jwt-superadmin-token-111',
+          tokenType: 'Bearer',
+          expiresInMs: 900000,
+          user: {
+            id: 1,
+            email: 'admin@civnexa.edu',
+            name: 'Platform Administrator',
+            role: 'SUPER_ADMIN',
+            status: 'ACTIVE',
+            userReference: 'ADM-ROOT-001',
+            passwordChangeRequired: true,
+          },
+        },
+      });
+
+      render(
+        <AuthProvider>
+          <TestConsumer />
+        </AuthProvider>
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Trigger Super Admin Login' }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('auth-status').textContent).toBe('authenticated');
+        expect(screen.getByTestId('user-role').textContent).toBe('SUPER_ADMIN');
+        expect(screen.getByTestId('user-name').textContent).toBe('Platform Administrator');
+        expect(screen.getByTestId('is-super-admin').textContent).toBe('yes');
+        expect(screen.getByTestId('is-dean').textContent).toBe('no');
+        expect(screen.getByTestId('password-change').textContent).toBe('yes');
+      });
+    });
+
+    it('rejects login when backend response contains null user', async () => {
+      vi.spyOn(apiClient, 'post').mockResolvedValueOnce({
+        success: false,
+        message: 'Invalid user',
+        data: null,
+      });
+
+      render(
+        <AuthProvider>
+          <TestConsumer />
+        </AuthProvider>
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Trigger Login' }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('auth-status').textContent).toBe('unauthenticated');
+        expect(screen.getByTestId('user-role').textContent).toBe('NONE');
+      });
+    });
   });
 
   // ----------------------------------------------------
@@ -315,6 +433,17 @@ describe('CIVNEXA BE-1.3-D Authentication Integration Tests', () => {
       };
       render(<GuardedApp initialUser={studentUser} defaultAuthenticated={true} />);
       expect(screen.getByText('Access Restricted')).toBeDefined();
+    });
+
+    it('permits SUPER_ADMIN to access protected workspace', () => {
+      const adminUser = {
+        id: 'u-admin-root',
+        role: 'SUPER_ADMIN',
+        name: 'Platform Administrator',
+        email: 'admin@civnexa.edu',
+      };
+      render(<GuardedApp initialUser={adminUser} defaultAuthenticated={true} />);
+      expect(screen.getByText('Protected Dean Workspace')).toBeDefined();
     });
   });
 
@@ -415,6 +544,223 @@ describe('CIVNEXA BE-1.3-D Authentication Integration Tests', () => {
         'Unable to connect to CIVNEXA authentication service.'
       );
       expect(matches.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('successfully logs in with nested response structure and toast shows user name', async () => {
+      vi.spyOn(apiClient, 'post').mockResolvedValueOnce({
+        success: true,
+        message: 'Authentication successful',
+        data: {
+          accessToken: 'jwt-nested-admin-token-777',
+          tokenType: 'Bearer',
+          expiresInMs: 900000,
+          user: {
+            id: 1,
+            email: 'admin@civnexa.edu',
+            name: 'Platform Administrator',
+            role: 'SUPER_ADMIN',
+            status: 'ACTIVE',
+            userReference: 'ADM-ROOT-001',
+            passwordChangeRequired: true,
+          },
+        },
+      });
+
+      renderLoginPage();
+
+      const emailInput = screen.getByLabelText(/Institutional Email Address/i);
+      const passInput = screen.getByLabelText(/^Password/i);
+      const submitBtn = screen.getByRole('button', { name: /Sign In to Platform/i });
+
+      fireEvent.change(emailInput, { target: { value: 'admin@civnexa.edu' } });
+      fireEvent.change(passInput, { target: { value: 'AdminPassword@123' } });
+      fireEvent.click(submitBtn);
+
+      await waitFor(() => {
+        expect(getAuthToken()).toBe('jwt-nested-admin-token-777');
+      });
+    });
+  });
+
+  // ----------------------------------------------------
+  // 6. Password Change & Registration Integration Tests
+  // ----------------------------------------------------
+  describe('6. Password Change & Enhanced Registration Tests', () => {
+    it('authService.changePassword submits correct payload and returns updated user', async () => {
+      vi.spyOn(apiClient, 'post').mockResolvedValueOnce({
+        success: true,
+        message: 'Password changed successfully',
+        data: {
+          id: 1,
+          email: 'admin@civnexa.edu',
+          name: 'Platform Administrator',
+          role: 'SUPER_ADMIN',
+          status: 'ACTIVE',
+          passwordChangeRequired: false,
+        },
+      });
+
+      const res = await authService.changePassword({
+        currentPassword: 'OldPassword123!',
+        newPassword: 'NewPassword123@',
+        confirmPassword: 'NewPassword123@',
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.user.passwordChangeRequired).toBe(false);
+      expect(apiClient.post).toHaveBeenCalledWith('/auth/change-password', {
+        currentPassword: 'OldPassword123!',
+        newPassword: 'NewPassword123@',
+        confirmPassword: 'NewPassword123@',
+      });
+    });
+
+    it('authService.changePassword captures field errors from server', async () => {
+      vi.spyOn(apiClient, 'post').mockRejectedValueOnce({
+        status: 400,
+        message: 'Validation failed for one or more fields',
+        data: {
+          success: false,
+          data: {
+            currentPassword: 'Current password is incorrect',
+          },
+        },
+      });
+
+      await expect(
+        authService.changePassword({
+          currentPassword: 'WrongPassword!',
+          newPassword: 'NewPassword123@',
+          confirmPassword: 'NewPassword123@',
+        })
+      ).rejects.toSatisfy((err) => {
+        return err.fieldErrors && err.fieldErrors.currentPassword === 'Current password is incorrect';
+      });
+    });
+
+    it('authService.register packages combined name, rollNumber, and department', async () => {
+      vi.spyOn(apiClient, 'post').mockResolvedValueOnce({
+        success: true,
+        message: 'Student registration submitted successfully',
+        data: {
+          id: 10,
+          email: 'student@civnexa.edu',
+          name: 'Priya Sharma',
+          role: 'STUDENT',
+          status: 'PENDING_VERIFICATION',
+        },
+      });
+
+      const res = await authService.register({
+        firstName: 'Priya',
+        lastName: 'Sharma',
+        email: 'student@civnexa.edu',
+        institutionalId: '22CSE045',
+        departmentId: 1,
+        department: 'Computer Science & Engineering',
+        password: 'ValidPassword123!',
+      });
+
+      expect(res.user.name).toBe('Priya Sharma');
+      expect(res.status).toBe('PENDING_VERIFICATION');
+      expect(apiClient.post).toHaveBeenCalledWith(
+        '/auth/register',
+        expect.objectContaining({
+          name: 'Priya Sharma',
+          firstName: 'Priya',
+          lastName: 'Sharma',
+          email: 'student@civnexa.edu',
+          rollNumber: '22CSE045',
+          institutionalId: '22CSE045',
+          departmentId: 1,
+          department: 'Computer Science & Engineering',
+          role: 'STUDENT',
+        })
+      );
+    });
+
+    it('RegisterPage renders validation errors for missing required fields without clearing inputs', async () => {
+      render(
+        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <ToastProvider>
+            <RegisterPage />
+          </ToastProvider>
+        </MemoryRouter>
+      );
+
+      const submitBtn = screen.getByRole('button', { name: /Submit Registration/i });
+      fireEvent.click(submitBtn);
+
+      expect(await screen.findByText('Please correct the highlighted fields before submitting.')).toBeDefined();
+      expect(screen.getByText('First name is required.')).toBeDefined();
+      expect(screen.getByText('Official university email is required.')).toBeDefined();
+    });
+
+    it('RegisterPage allows toggling password visibility and renders checklist', async () => {
+      render(
+        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <ToastProvider>
+            <RegisterPage />
+          </ToastProvider>
+        </MemoryRouter>
+      );
+
+      const passInput = screen.getByLabelText(/^Password \*/i);
+      expect(passInput.getAttribute('type')).toBe('password');
+
+      fireEvent.change(passInput, { target: { value: 'Pass' } });
+      expect(screen.getByText('Password Requirements:')).toBeDefined();
+
+      const showPassBtn = screen.getByRole('button', { name: /Toggle password visibility/i });
+      fireEvent.click(showPassBtn);
+      expect(passInput.getAttribute('type')).toBe('text');
+    });
+
+    it('SettingsPage renders password change form and handles password update', async () => {
+      const mockUser = {
+        id: 1,
+        email: 'admin@civnexa.edu',
+        name: 'Platform Administrator',
+        role: 'SUPER_ADMIN',
+        status: 'ACTIVE',
+        passwordChangeRequired: true,
+      };
+
+      vi.spyOn(apiClient, 'post').mockResolvedValueOnce({
+        success: true,
+        message: 'Password changed successfully',
+        data: {
+          ...mockUser,
+          passwordChangeRequired: false,
+        },
+      });
+
+      render(
+        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <AuthProvider initialUser={mockUser}>
+            <ToastProvider>
+              <SettingsPage />
+            </ToastProvider>
+          </AuthProvider>
+        </MemoryRouter>
+      );
+
+      expect(screen.getByText('Account Password & Security')).toBeDefined();
+
+      const currentPass = screen.getByLabelText(/^Current Password/i);
+      const newPass = screen.getByLabelText(/^New Password/i);
+      const confirmPass = screen.getByLabelText(/^Confirm New Password/i);
+
+      fireEvent.change(currentPass, { target: { value: 'OldPassword123!' } });
+      fireEvent.change(newPass, { target: { value: 'NewSuperPass2026@' } });
+      fireEvent.change(confirmPass, { target: { value: 'NewSuperPass2026@' } });
+
+      const updateBtn = screen.getByRole('button', { name: /Update Password/i });
+      fireEvent.click(updateBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText(/Your password has been changed successfully/i)).toBeDefined();
+      });
     });
   });
 });

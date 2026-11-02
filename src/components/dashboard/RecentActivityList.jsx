@@ -104,8 +104,8 @@ export const RecentActivityList = ({
                       )}
                       {item.actor && (
                         <span className="text-muted small" style={{ fontSize: '0.68rem' }}>
-                          by <strong className="text-dark">{typeof item.actor === 'string' ? item.actor : item.actor.name}</strong>
-                          {typeof item.actor === 'object' && item.actor.role ? ` (${item.actor.role})` : ''}
+                          by <strong className="text-dark">{typeof item.actor === 'string' ? item.actor : (item.actor?.name || 'Institutional Staff')}</strong>
+                          {typeof item.actor === 'object' && item.actor?.role ? ` (${item.actor.role})` : ''}
                         </span>
                       )}
                     </div>

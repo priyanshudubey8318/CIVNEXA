@@ -1,12 +1,19 @@
-import { apiClient } from './apiClient';
+import { apiClient, getAuthToken } from './apiClient';
 
 export const qrService = {
   /**
    * Fetch authenticated user's digital identity card & QR token
    */
   async getStudentCard() {
-    const response = await apiClient.get('/qr/student-card');
-    return response.data?.data || response.data;
+    if (!getAuthToken()) {
+      return null;
+    }
+    try {
+      const response = await apiClient.get('/qr/student-card');
+      return response.data?.data || response.data;
+    } catch {
+      return null;
+    }
   },
 
   /**
@@ -87,8 +94,15 @@ export const qrService = {
    * @param {number|string} caseId
    */
   async getCaseTrackingToken(caseId) {
-    const response = await apiClient.get(`/qr/case/${caseId}/token`);
-    return response.data?.data?.qrTrackingToken || response.data?.qrTrackingToken;
+    if (!getAuthToken()) {
+      return `CX-TRK-${caseId}-LOCAL`;
+    }
+    try {
+      const response = await apiClient.get(`/qr/case/${caseId}/token`);
+      return response.data?.data?.qrTrackingToken || response.data?.qrTrackingToken || `CX-TRK-${caseId}-LOCAL`;
+    } catch {
+      return `CX-TRK-${caseId}-LOCAL`;
+    }
   },
 
   /**
@@ -105,8 +119,15 @@ export const qrService = {
    * @param {number|string} evidenceId
    */
   async getEvidenceCustodyToken(evidenceId) {
-    const response = await apiClient.get(`/qr/evidence/${evidenceId}/token`);
-    return response.data?.data?.qrCustodyToken || response.data?.qrCustodyToken;
+    if (!getAuthToken()) {
+      return `EVD-CUST-${evidenceId}-LOCAL`;
+    }
+    try {
+      const response = await apiClient.get(`/qr/evidence/${evidenceId}/token`);
+      return response.data?.data?.qrCustodyToken || response.data?.qrCustodyToken || `EVD-CUST-${evidenceId}-LOCAL`;
+    } catch {
+      return `EVD-CUST-${evidenceId}-LOCAL`;
+    }
   },
 
   /**

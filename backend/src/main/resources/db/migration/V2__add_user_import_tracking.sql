@@ -41,7 +41,7 @@ CREATE INDEX idx_import_job_created ON import_jobs(created_at);
 CREATE TABLE import_row_results (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     job_id BIGINT NOT NULL,
-    row_number INT NOT NULL,
+    `row_number` INT NOT NULL,
     record_identifier VARCHAR(120),
     status VARCHAR(20) NOT NULL,
     error_message TEXT,

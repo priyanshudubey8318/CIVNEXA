@@ -3,21 +3,25 @@ import React from 'react';
 /**
  * UserAvatar Component
  * Displays user initials with consistent color generation or image.
+ * Resilient against null, undefined, or empty names.
  */
 export const UserAvatar = ({ name = 'User', avatar, size = 36, role, className = '' }) => {
+  const safeName = typeof name === 'string' && name.trim().length > 0 ? name.trim() : 'User';
+
   const getInitials = (str) => {
-    if (!str) return 'U';
-    const parts = str.trim().split(/\s+/);
+    if (!str || typeof str !== 'string') return 'U';
+    const parts = str.trim().split(/\s+/).filter(Boolean);
     if (parts.length >= 2) {
       return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
     }
     return str.slice(0, 2).toUpperCase();
   };
 
-  const initials = avatar || getInitials(name);
+  const initials = avatar || getInitials(safeName);
 
   // Derive stable background hue based on name
-  const getBgColor = (seed) => {
+  const getBgColor = (seed = 'User') => {
+    const safeSeed = typeof seed === 'string' && seed.length > 0 ? seed : 'User';
     const colors = [
       '#0F766E', // teal-700
       '#1E3A8A', // blue-900
@@ -28,14 +32,14 @@ export const UserAvatar = ({ name = 'User', avatar, size = 36, role, className =
       '#065F46', // emerald-800
     ];
     let hash = 0;
-    for (let i = 0; i < seed.length; i++) {
-      hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+    for (let i = 0; i < safeSeed.length; i++) {
+      hash = safeSeed.charCodeAt(i) + ((hash << 5) - hash);
     }
     const index = Math.abs(hash) % colors.length;
     return colors[index];
   };
 
-  const bgColor = getBgColor(name);
+  const bgColor = getBgColor(safeName);
 
   return (
     <div
@@ -52,8 +56,8 @@ export const UserAvatar = ({ name = 'User', avatar, size = 36, role, className =
         border: '1.5px solid rgba(255, 255, 255, 0.2)',
         userSelect: 'none',
       }}
-      title={`${name} (${role || 'User'})`}
-      aria-label={`${name} avatar`}
+      title={`${safeName} (${role || 'User'})`}
+      aria-label={`${safeName} avatar`}
     >
       {initials}
     </div>

@@ -11,6 +11,14 @@ public class RegisterRequest {
     @Size(max = 100, message = "Name cannot exceed 100 characters")
     private String name;
 
+    private boolean explicitName = false;
+
+    @Size(max = 50, message = "First name cannot exceed 50 characters")
+    private String firstName;
+
+    @Size(max = 50, message = "Last name cannot exceed 50 characters")
+    private String lastName;
+
     @NotBlank(message = "Email is required")
     @Email(message = "Invalid email format")
     @Size(max = 120, message = "Email cannot exceed 120 characters")
@@ -25,10 +33,16 @@ public class RegisterRequest {
     @Size(max = 30, message = "Roll number cannot exceed 30 characters")
     private String rollNumber;
 
+    @Size(max = 30, message = "Institutional ID cannot exceed 30 characters")
+    private String institutionalId;
+
     @Size(max = 50, message = "Enrollment number cannot exceed 50 characters")
     private String enrollmentNumber;
 
     private Long departmentId;
+
+    @Size(max = 100, message = "Department name cannot exceed 100 characters")
+    private String department;
 
     @Size(max = 100, message = "Course cannot exceed 100 characters")
     private String course;
@@ -49,11 +63,53 @@ public class RegisterRequest {
     }
 
     public String getName() {
+        if (!explicitName && (firstName != null || lastName != null)) {
+            syncCombinedName();
+        }
         return name;
     }
 
     public void setName(String name) {
         this.name = name;
+        this.explicitName = (name != null && !name.trim().isEmpty());
+    }
+
+    public String getFirstName() {
+        return firstName;
+    }
+
+    public void setFirstName(String firstName) {
+        this.firstName = firstName;
+        if (!explicitName) {
+            syncCombinedName();
+        }
+    }
+
+    public String getLastName() {
+        return lastName;
+    }
+
+    public void setLastName(String lastName) {
+        this.lastName = lastName;
+        if (!explicitName) {
+            syncCombinedName();
+        }
+    }
+
+    private void syncCombinedName() {
+        StringBuilder sb = new StringBuilder();
+        if (firstName != null && !firstName.isBlank()) {
+            sb.append(firstName.trim());
+        }
+        if (lastName != null && !lastName.isBlank()) {
+            if (!sb.isEmpty()) {
+                sb.append(" ");
+            }
+            sb.append(lastName.trim());
+        }
+        if (!sb.isEmpty()) {
+            this.name = sb.toString();
+        }
     }
 
     public String getEmail() {
@@ -81,11 +137,25 @@ public class RegisterRequest {
     }
 
     public String getRollNumber() {
+        if ((rollNumber == null || rollNumber.trim().isEmpty()) && institutionalId != null && !institutionalId.trim().isEmpty()) {
+            return institutionalId.trim();
+        }
         return rollNumber;
     }
 
     public void setRollNumber(String rollNumber) {
         this.rollNumber = rollNumber;
+    }
+
+    public String getInstitutionalId() {
+        return institutionalId;
+    }
+
+    public void setInstitutionalId(String institutionalId) {
+        this.institutionalId = institutionalId;
+        if (this.rollNumber == null || this.rollNumber.trim().isEmpty()) {
+            this.rollNumber = institutionalId;
+        }
     }
 
     public String getEnrollmentNumber() {
@@ -102,6 +172,14 @@ public class RegisterRequest {
 
     public void setDepartmentId(Long departmentId) {
         this.departmentId = departmentId;
+    }
+
+    public String getDepartment() {
+        return department;
+    }
+
+    public void setDepartment(String department) {
+        this.department = department;
     }
 
     public String getCourse() {
@@ -136,8 +214,10 @@ public class RegisterRequest {
                 ", password='[PROTECTED]'" +
                 ", role=" + role +
                 ", rollNumber='" + rollNumber + '\'' +
+                ", institutionalId='" + institutionalId + '\'' +
                 ", enrollmentNumber='" + enrollmentNumber + '\'' +
                 ", departmentId=" + departmentId +
+                ", department='" + department + '\'' +
                 ", course='" + course + '\'' +
                 ", semester='" + semester + '\'' +
                 ", section='" + section + '\'' +

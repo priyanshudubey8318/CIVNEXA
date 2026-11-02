@@ -73,8 +73,19 @@ export const AuthProvider = ({
     setAuthError(null);
     try {
       const result = await authService.login({ email, password });
+      if (!result?.user) {
+        throw new Error('Authentication succeeded but user profile could not be resolved.');
+      }
       setCurrentUser(result.user);
       setIsAuthenticated(true);
+      try {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem('civnexa_current_user', JSON.stringify(result.user));
+          window.sessionStorage.setItem('civnexa_auth_session', 'active');
+        }
+      } catch {
+        // ignore
+      }
       return result;
     } catch (err) {
       setAuthError(err.message || 'Authentication failed.');
@@ -97,6 +108,44 @@ export const AuthProvider = ({
       setAuthError(null);
       setIsLoading(false);
     }
+  };
+
+  /**
+   * Update active user profile state and persistence
+   */
+  const updateCurrentUser = (partialUser) => {
+    setCurrentUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, ...partialUser };
+      try {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem('civnexa_current_user', JSON.stringify(updated));
+        }
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
+  };
+
+  /**
+   * Change password for the authenticated user and update session
+   */
+  const changePassword = async ({ currentPassword, newPassword, confirmPassword }) => {
+    const result = await authService.changePassword({ currentPassword, newPassword, confirmPassword });
+    if (result?.user) {
+      setCurrentUser(result.user);
+      try {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem('civnexa_current_user', JSON.stringify(result.user));
+        }
+      } catch {
+        // ignore
+      }
+    } else {
+      updateCurrentUser({ passwordChangeRequired: false });
+    }
+    return result;
   };
 
   /**
@@ -126,6 +175,8 @@ export const AuthProvider = ({
     authError,
     login,
     logout,
+    changePassword,
+    updateCurrentUser,
     hasRole,
     hasAnyRole,
     hasPermission,
@@ -138,6 +189,7 @@ export const AuthProvider = ({
     isCoordinator: currentUser?.role === 'COORDINATOR',
     isCommitteeMember: currentUser?.role === 'COMMITTEE_MEMBER',
     isStudent: currentUser?.role === 'STUDENT',
+    passwordChangeRequired: Boolean(currentUser?.passwordChangeRequired),
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

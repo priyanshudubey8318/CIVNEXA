@@ -200,7 +200,7 @@ export const AppellateReviewPage = () => {
         {
           outcome: finalOutcomeChoice,
           justification: outcomeJustification,
-          authorizedBy: currentUser.name,
+          authorizedBy: currentUser?.name || 'Dean of Student Affairs',
           remandInstructions: finalOutcomeChoice === 'REMANDED_FOR_REVIEW' ? remandInstructions : null,
         },
         currentUser

@@ -62,10 +62,20 @@ export const LoginPage = () => {
         password,
       });
 
+      const displayName = result?.user?.name || result?.user?.email || 'User';
+      const displayRole = result?.user?.roleLabel || result?.user?.role || 'Authenticated';
+
       toast.success(
-        `Welcome, ${result.user.name}. Authenticated Role: ${result.user.roleLabel}`,
+        `Welcome, ${displayName}. Authenticated Role: ${displayRole}`,
         'Authentication Successful'
       );
+
+      if (result?.user?.passwordChangeRequired) {
+        toast.warning(
+          'Security Notice: Initial administrator bootstrap mandates an immediate password update.',
+          'Password Change Required'
+        );
+      }
 
       // Safe open-redirect validation: target must be internal relative path starting with single '/'
       const searchParams = new URLSearchParams(location.search);

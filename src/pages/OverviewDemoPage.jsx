@@ -86,7 +86,7 @@ export const OverviewDemoPage = () => {
 
   // Render role dashboard based on active persona
   const renderRoleDashboard = () => {
-    const roleKey = currentUser?.role;
+    const roleKey = currentUser?.role || currentRole?.key;
     switch (roleKey) {
       case 'SUPER_ADMIN':
         return <SuperAdminDashboard onInspectCase={(c) => { setSelectedCase(c); setIsDetailModalOpen(true); }} />;

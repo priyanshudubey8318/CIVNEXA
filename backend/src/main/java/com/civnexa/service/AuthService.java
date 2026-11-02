@@ -1,6 +1,7 @@
 package com.civnexa.service;
 
 import com.civnexa.dto.AccountDecisionRequest;
+import com.civnexa.dto.ChangePasswordRequest;
 import com.civnexa.dto.LoginRequest;
 import com.civnexa.dto.RegisterRequest;
 import com.civnexa.dto.ResendVerificationRequest;
@@ -156,6 +157,11 @@ public class AuthService {
             department = departmentRepository.findById(request.getDepartmentId())
                     .orElseThrow(() -> new ApiException("Department not found with ID: " + request.getDepartmentId(),
                             HttpStatus.BAD_REQUEST));
+        } else if (request.getDepartment() != null && !request.getDepartment().trim().isEmpty()) {
+            String deptName = request.getDepartment().trim();
+            department = departmentRepository.findByName(deptName)
+                    .or(() -> departmentRepository.findByCode(deptName))
+                    .orElse(null);
         }
 
         // 7. Hash password using configured BCryptPasswordEncoder (safe: length verified <= 72 bytes)
@@ -248,7 +254,7 @@ public class AuthService {
             return UserResponse.fromEntity(user);
         }
 
-        EmailVerification verification = emailVerificationRepository.findTopByEmailOrderByCreatedAtDesc(normalizedEmail)
+        EmailVerification verification = emailVerificationRepository.findTopByEmailOrderByCreatedAtDescIdDesc(normalizedEmail)
                 .orElseThrow(() -> new ApiException("No active verification code found for this email. Please request a new code.",
                         HttpStatus.BAD_REQUEST));
 
@@ -323,7 +329,7 @@ public class AuthService {
         }
 
         if (emailVerificationRepository != null) {
-            Optional<EmailVerification> latestOpt = emailVerificationRepository.findTopByEmailOrderByCreatedAtDesc(normalizedEmail);
+            Optional<EmailVerification> latestOpt = emailVerificationRepository.findTopByEmailOrderByCreatedAtDescIdDesc(normalizedEmail);
             if (latestOpt.isPresent()) {
                 EmailVerification latest = latestOpt.get();
                 if (Instant.now().isBefore(latest.getResendAvailableAt())) {
@@ -601,6 +607,70 @@ public class AuthService {
 
         log.debug("Credentials successfully verified for userRef={}", user.getUserReference());
         return user;
+    }
+
+    /**
+     * Changes password for an authenticated user.
+     * Validates current password, enforces institutional password complexity,
+     * updates the BCrypt hash, clears passwordChangeRequired, and creates an audit log entry.
+     *
+     * @param userId The authenticated user's ID
+     * @param request Current password, new password, and confirmation
+     * @return Updated safe UserResponse
+     */
+    @Transactional
+    public UserResponse changePassword(Long userId, ChangePasswordRequest request) {
+        if (userId == null) {
+            throw new ApiException("User ID is required", HttpStatus.BAD_REQUEST);
+        }
+        if (request == null) {
+            throw new ApiException("Password change request cannot be null", HttpStatus.BAD_REQUEST);
+        }
+        if (request.getCurrentPassword() == null || request.getCurrentPassword().isEmpty()) {
+            throw new ApiException("Current password is required", HttpStatus.BAD_REQUEST);
+        }
+        if (request.getNewPassword() == null || request.getNewPassword().isEmpty()) {
+            throw new ApiException("New password is required", HttpStatus.BAD_REQUEST);
+        }
+        if (request.getConfirmPassword() == null || request.getConfirmPassword().isEmpty()) {
+            throw new ApiException("Password confirmation is required", HttpStatus.BAD_REQUEST);
+        }
+        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new ApiException("New password and confirmation password do not match", HttpStatus.BAD_REQUEST);
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException("User not found", HttpStatus.NOT_FOUND));
+
+        // 1. Verify current password
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPasswordHash())) {
+            throw new ApiException("Current password is incorrect", HttpStatus.BAD_REQUEST);
+        }
+
+        // 2. Prevent reusing the exact same password
+        if (passwordEncoder.matches(request.getNewPassword(), user.getPasswordHash())) {
+            throw new ApiException("New password cannot be the same as the current password", HttpStatus.BAD_REQUEST);
+        }
+
+        // 3. Validate new password complexity against institutional policy
+        PasswordValidator.validate(request.getNewPassword());
+
+        // 4. Encode new password and update user
+        String newPasswordHash = passwordEncoder.encode(request.getNewPassword());
+        user.setPasswordHash(newPasswordHash);
+        user.setPasswordChangeRequired(false);
+
+        User savedUser = userRepository.saveAndFlush(user);
+
+        // 5. Record security audit log
+        if (auditService != null) {
+            auditService.recordEvent("PASSWORD_CHANGED", "USER", savedUser.getUserReference(), savedUser,
+                    "User password changed successfully; cleared passwordChangeRequired");
+        }
+
+        log.info("Password changed successfully for userRef={}", savedUser.getUserReference());
+
+        return UserResponse.fromEntity(savedUser);
     }
 
     /**

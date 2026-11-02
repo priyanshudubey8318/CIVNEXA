@@ -7,38 +7,64 @@ import { ROLES } from '../constants/roles.js';
 
 /**
  * Normalizes backend UserResponse into frontend user structure
+ * Supports both full backend DTOs (with name, userReference, role, passwordChangeRequired)
+ * and legacy/mock personas.
  * @param {Object} user - UserResponse from backend
  * @returns {Object|null}
  */
 export const mapBackendUserToFrontend = (user) => {
-  if (!user) return null;
-  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+  if (!user || typeof user !== 'object') return null;
+
+  // Derive human-readable full name prioritizing backend user.name,
+  // then firstName/lastName combination, then email, and finally fallback
+  const nameParts = [user.firstName, user.lastName].filter(Boolean).join(' ');
+  const fullName = user.name || (nameParts.length > 0 ? nameParts : '') || user.email || 'Institutional User';
+
   const roleKey = user.role || 'STUDENT';
   const roleConfig = ROLES[roleKey] || ROLES.STUDENT;
 
+  // Normalize departmental allocation
+  const departmentName = user.department || user.departmentName ||
+    (roleKey === 'SUPER_ADMIN' ? 'CIVNEXA Platform' : 'General Administration');
+
+  // Derive first and last names if not explicitly separated
+  const firstName = user.firstName || (user.name ? user.name.split(' ')[0] : '');
+  const lastName = user.lastName || (user.name && user.name.includes(' ') ? user.name.substring(user.name.indexOf(' ') + 1) : '');
+
   return {
     id: user.id,
-    userReference: user.userReference || user.id,
-    institutionalId: user.institutionalId || '',
-    email: user.email,
-    firstName: user.firstName || '',
-    lastName: user.lastName || '',
+    userReference: user.userReference || `USR-${user.id || '001'}`,
+    institutionalId: user.institutionalId || user.rollNumber || user.rollNo || '',
+    email: user.email || '',
+    firstName,
+    lastName,
     name: fullName,
     role: roleKey,
     roleLabel: roleConfig.label || roleKey,
     status: user.status || 'ACTIVE',
-    department: user.department || 'General Administration',
-    title: roleConfig.label || roleKey,
-    rollNo: user.institutionalId || '',
+    department: departmentName,
+    departmentName: departmentName,
+    departmentCode: user.departmentCode || '',
+    title: user.title || roleConfig.label || roleKey,
+    rollNo: user.rollNumber || user.rollNo || user.institutionalId || '',
+    enrollmentNumber: user.enrollmentNumber || '',
+    course: user.course || '',
+    semester: user.semester || '',
+    section: user.section || '',
+    cgpa: user.cgpa,
     createdAt: user.createdAt,
     lastLoginAt: user.lastLoginAt,
-    avatar: null,
+    passwordChangeRequired: Boolean(user.passwordChangeRequired),
+    qrToken: user.qrToken || null,
+    qrRevoked: Boolean(user.qrRevoked),
+    avatar: user.avatar || null,
   };
 };
 
 export const authService = {
   /**
    * Real backend authentication via Spring Boot /api/v1/auth/login
+   * Unwraps backend ApiResponse envelope { success: true, message: '...', data: { accessToken, user, ... } }
    * @param {Object} credentials - { email, password }
    * @returns {Promise<Object>} { user, token, tokenType, expiresIn }
    */
@@ -62,19 +88,25 @@ export const authService = {
         password,
       });
 
-      // Response unwrapped by apiClient interceptor: { accessToken, tokenType, expiresIn, user }
-      const token = response.accessToken;
+      // Handle ApiResponse envelope { success, message, data: { accessToken, tokenType, expiresInMs, user } }
+      // as well as direct mock payloads { accessToken, user }
+      const payload = response?.data?.data || response?.data || response;
+      const token = payload?.accessToken || response?.accessToken || null;
       if (token) {
         setAuthToken(token);
       }
 
-      const mappedUser = mapBackendUserToFrontend(response.user);
+      const rawUser = payload?.user || response?.user || null;
+      const mappedUser = mapBackendUserToFrontend(rawUser);
+
+      const tokenType = payload?.tokenType || response?.tokenType || 'Bearer';
+      const expiresIn = payload?.expiresInMs || payload?.expiresIn || response?.expiresInMs || response?.expiresIn || 900000;
 
       return {
         user: mappedUser,
         token: token,
-        tokenType: response.tokenType || 'Bearer',
-        expiresIn: response.expiresIn,
+        tokenType: tokenType,
+        expiresIn: expiresIn,
       };
     } catch (error) {
       if (error.status === 401) {
@@ -95,27 +127,84 @@ export const authService = {
    */
   register: async (registrationData) => {
     try {
-      const response = await apiClient.post('/auth/register', registrationData);
-      const token = response.accessToken;
+      const name = registrationData.name ||
+        [registrationData.firstName, registrationData.lastName].filter(Boolean).join(' ').trim();
+      const rollNumber = registrationData.rollNumber || registrationData.institutionalId;
+
+      const payload = {
+        name,
+        firstName: registrationData.firstName,
+        lastName: registrationData.lastName,
+        email: registrationData.email?.trim(),
+        rollNumber: rollNumber?.trim(),
+        institutionalId: rollNumber?.trim(),
+        departmentId: registrationData.departmentId || null,
+        department: registrationData.department || null,
+        password: registrationData.password,
+        role: 'STUDENT',
+      };
+
+      const response = await apiClient.post('/auth/register', payload);
+      const resPayload = response?.data?.data || response?.data || response;
+      const token = resPayload?.accessToken || response?.accessToken || null;
       if (token) {
         setAuthToken(token);
       }
-      const mappedUser = mapBackendUserToFrontend(response.user);
+      const rawUser = resPayload?.user || resPayload;
+      const mappedUser = mapBackendUserToFrontend(rawUser);
       return {
         user: mappedUser,
         token: token,
-        status: response.user?.status,
+        status: rawUser?.status,
       };
     } catch (error) {
+      const fieldErrors = error.data?.data || null;
+      let msg = error.message || 'Registration failed. Please contact your administrator.';
       if (error.status === 403) {
-        throw new Error(
-          'Public registration is disabled by institutional policy. Student accounts are provisioned by the university administration.'
-        );
+        msg = 'Public registration is disabled by institutional policy. Student accounts are provisioned by the university administration.';
+      } else if (error.status === 409) {
+        if (error.message && error.message.toLowerCase().includes('roll')) {
+          msg = 'Roll number is already registered.';
+        } else if (error.message && error.message.toLowerCase().includes('email')) {
+          msg = 'Email address is already registered.';
+        } else {
+          msg = 'An account with this institutional email or ID already exists.';
+        }
       }
-      if (error.status === 409) {
-        throw new Error('An account with this institutional email or ID already exists.');
-      }
-      throw new Error(error.message || 'Registration failed. Please contact your administrator.');
+      const err = new Error(msg);
+      err.status = error.status;
+      err.fieldErrors = fieldErrors;
+      err.isPolicyBlocked = error.status === 403;
+      throw err;
+    }
+  },
+
+  /**
+   * Changes authenticated user password via /api/v1/auth/change-password
+   * @param {Object} param0 - { currentPassword, newPassword, confirmPassword }
+   * @returns {Promise<Object>}
+   */
+  changePassword: async ({ currentPassword, newPassword, confirmPassword }) => {
+    try {
+      const response = await apiClient.post('/auth/change-password', {
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      });
+      const payload = response?.data?.data || response?.data || response;
+      const rawUser = payload?.user || payload;
+      const mappedUser = mapBackendUserToFrontend(rawUser);
+      return {
+        success: true,
+        message: response?.message || 'Password changed successfully.',
+        user: mappedUser,
+      };
+    } catch (error) {
+      const fieldErrors = error.data?.data || null;
+      const err = new Error(error.message || 'Failed to change password. Please check your inputs.');
+      err.status = error.status;
+      err.fieldErrors = fieldErrors;
+      throw err;
     }
   },
 
@@ -136,9 +225,12 @@ export const authService = {
         email: email.trim(),
         otp: otp.trim(),
       });
+      const payload = response?.data?.data || response?.data || response;
+      const rawUser = payload?.user || payload;
       return {
         success: true,
-        message: response.message || 'Email verified successfully.',
+        message: response?.message || 'Email verified successfully.',
+        user: mapBackendUserToFrontend(rawUser),
       };
     } catch (error) {
       if (error.status === 400) {
@@ -203,7 +295,8 @@ export const authService = {
   getCurrentUser: async () => {
     try {
       const response = await apiClient.get('/auth/me');
-      return mapBackendUserToFrontend(response);
+      const rawUser = response?.data?.data || response?.data || response;
+      return mapBackendUserToFrontend(rawUser);
     } catch (error) {
       clearAuthToken();
       return null;

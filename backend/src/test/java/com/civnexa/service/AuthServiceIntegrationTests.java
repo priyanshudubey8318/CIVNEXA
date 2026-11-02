@@ -1,5 +1,6 @@
 package com.civnexa.service;
 
+import com.civnexa.dto.ChangePasswordRequest;
 import com.civnexa.dto.LoginRequest;
 import com.civnexa.dto.RegisterRequest;
 import com.civnexa.dto.UserResponse;
@@ -461,5 +462,71 @@ public class AuthServiceIntegrationTests {
         paramUser.setDepartment(savedDepartment);
         User saved = userRepository.saveAndFlush(paramUser);
         assertEquals("PENDING_VERIFICATION", saved.getStatus());
+    }
+
+    @Test
+    @DisplayName("changePassword updates password hash, clears passwordChangeRequired and records audit log")
+    void testChangePasswordSuccessService() {
+        User user = provisionTestUser("STU-2026-CHGPASS", "Pass Test", "pass.test@institution.edu", "OldSecurePass2026!", RoleType.STUDENT, "ACTIVE");
+        user.setPasswordChangeRequired(true);
+        user = userRepository.saveAndFlush(user);
+
+        ChangePasswordRequest req = new ChangePasswordRequest("OldSecurePass2026!", "NewSecurePass2026@", "NewSecurePass2026@");
+        UserResponse response = authService.changePassword(user.getId(), req);
+
+        assertNotNull(response);
+        assertFalse(response.getPasswordChangeRequired());
+
+        User reloaded = userRepository.findById(user.getId()).orElseThrow();
+        assertFalse(reloaded.isPasswordChangeRequired());
+        assertTrue(passwordEncoder.matches("NewSecurePass2026@", reloaded.getPasswordHash()));
+    }
+
+    @Test
+    @DisplayName("changePassword rejects incorrect current password")
+    void testChangePasswordIncorrectCurrentService() {
+        User user = provisionTestUser("STU-2026-CHGWRONG", "Pass Test", "pass.wrong@institution.edu", "OldSecurePass2026!", RoleType.STUDENT, "ACTIVE");
+
+        ChangePasswordRequest req = new ChangePasswordRequest("WrongOldPass!", "NewSecurePass2026@", "NewSecurePass2026@");
+        ApiException ex = assertThrows(ApiException.class, () -> authService.changePassword(user.getId(), req));
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
+        assertEquals("Current password is incorrect", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("changePassword rejects same new password as current password")
+    void testChangePasswordSameAsCurrentService() {
+        User user = provisionTestUser("STU-2026-CHGSAME", "Pass Test", "pass.same@institution.edu", "OldSecurePass2026!", RoleType.STUDENT, "ACTIVE");
+
+        ChangePasswordRequest req = new ChangePasswordRequest("OldSecurePass2026!", "OldSecurePass2026!", "OldSecurePass2026!");
+        ApiException ex = assertThrows(ApiException.class, () -> authService.changePassword(user.getId(), req));
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
+        assertEquals("New password cannot be the same as the current password", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("changePassword rejects mismatching confirmation password")
+    void testChangePasswordMismatchService() {
+        User user = provisionTestUser("STU-2026-CHGMIS", "Pass Test", "pass.mis@institution.edu", "OldSecurePass2026!", RoleType.STUDENT, "ACTIVE");
+
+        ChangePasswordRequest req = new ChangePasswordRequest("OldSecurePass2026!", "NewSecurePass2026@", "DifferentPass2026@");
+        ApiException ex = assertThrows(ApiException.class, () -> authService.changePassword(user.getId(), req));
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
+        assertTrue(ex.getMessage().contains("do not match"));
+    }
+
+    @Test
+    @DisplayName("registerStudent resolves department by department name string when departmentId is null")
+    void testRegisterWithDepartmentNameString() {
+        RegisterRequest req = new RegisterRequest("Dept Resolution Student", "dept.resolve@institution.edu", "ValidPass2026!");
+        req.setDepartment(savedDepartment.getName());
+        req.setRollNumber("ROLL-DEPT-99");
+
+        UserResponse res = authService.registerStudent(req);
+        assertNotNull(res);
+
+        User saved = userRepository.findByEmailIgnoreCase("dept.resolve@institution.edu").orElseThrow();
+        assertNotNull(saved.getDepartment());
+        assertEquals(savedDepartment.getId(), saved.getDepartment().getId());
     }
 }

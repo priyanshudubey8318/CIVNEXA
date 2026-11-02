@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, Link } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import Sidebar from '../components/layout/Sidebar';
 import Topbar from '../components/layout/Topbar';
@@ -14,7 +14,7 @@ import { Info, ShieldAlert } from 'lucide-react';
 export const AppLayout = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const { currentRole } = useAuth();
+  const { currentRole, currentUser } = useAuth();
   const location = useLocation();
 
   return (
@@ -35,6 +35,29 @@ export const AppLayout = () => {
       <div className="d-flex flex-column flex-grow-1 min-vw-0">
         {/* Global Topbar */}
         <Topbar onOpenMobileMenu={() => setIsMobileNavOpen(true)} />
+
+        {/* Mandatory Password Change Alert Banner */}
+        {currentUser?.passwordChangeRequired && (
+          <div
+            className="alert alert-warning border-0 rounded-0 mb-0 py-2.5 px-4 d-flex flex-wrap align-items-center justify-content-between gap-2 shadow-sm"
+            role="alert"
+            style={{ backgroundColor: '#FEF3C7', color: '#92400E', borderBottom: '1px solid #FCD34D' }}
+          >
+            <div className="d-flex align-items-center gap-2 small">
+              <ShieldAlert size={17} className="text-warning flex-shrink-0" />
+              <span>
+                <strong>Initial Bootstrap Security Notice:</strong> This administrator account requires an immediate password update.
+              </span>
+            </div>
+            <Link
+              to="/settings"
+              className="btn btn-sm btn-warning text-dark fw-bold px-3 py-1"
+              style={{ fontSize: '0.75rem' }}
+            >
+              Update Password
+            </Link>
+          </div>
+        )}
 
         {/* Dynamic Route Viewport */}
         <main className="flex-grow-1 p-3 p-md-4 p-xl-5">

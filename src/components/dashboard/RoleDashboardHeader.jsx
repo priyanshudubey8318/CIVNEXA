@@ -16,7 +16,7 @@ export const RoleDashboardHeader = ({
   title = null,
   subtitle = null,
 }) => {
-  const role = roleInfo || ROLES[user?.role] || {
+  const role = roleInfo || (user?.role ? ROLES[user.role] : null) || {
     label: user?.roleLabel || user?.role || 'Campus User',
     badgeColor: 'primary',
     description: 'CIVNEXA Institutional System Workspace',
@@ -28,6 +28,10 @@ export const RoleDashboardHeader = ({
     month: 'short',
     day: 'numeric',
   });
+
+  const userInitials = user?.avatar || (user?.name && typeof user.name === 'string' && user.name.trim().length > 0
+    ? user.name.trim().substring(0, 2).toUpperCase()
+    : 'CX');
 
   return (
     <motion.div
@@ -55,7 +59,7 @@ export const RoleDashboardHeader = ({
                 flexShrink: 0,
               }}
             >
-              {user?.avatar || user?.name?.substring(0, 2)?.toUpperCase() || 'CX'}
+              {userInitials}
             </div>
 
             <div>
@@ -98,23 +102,20 @@ export const RoleDashboardHeader = ({
 
         {/* Status indicator pills */}
         {statusPills && statusPills.length > 0 && (
-          <div className="d-flex flex-wrap align-items-center gap-2 pt-3 mt-3 border-top">
-            <span className="text-muted small fw-semibold text-uppercase" style={{ fontSize: '0.68rem', letterSpacing: '0.5px' }}>
-              Quick Status:
-            </span>
+          <div className="row g-2 mt-3 pt-3 border-top" style={{ borderColor: 'var(--cx-slate-100)' }}>
             {statusPills.map((pill, idx) => {
               const IconComponent = pill.icon || ShieldCheck;
-              const pillVariant = pill.variant || 'light';
               return (
-                <div
-                  key={idx}
-                  className={`badge bg-${pillVariant}-subtle text-${pillVariant} border border-${pillVariant}-subtle d-inline-flex align-items-center gap-1.5 py-1.5 px-2.5 fw-medium`}
-                  style={{ fontSize: '0.75rem' }}
-                >
-                  <IconComponent size={13} />
-                  <span>
-                    <strong>{pill.value}</strong> {pill.label}
-                  </span>
+                <div key={idx} className="col-6 col-sm-4 col-lg-auto">
+                  <div className="d-flex align-items-center gap-2 px-2.5 py-1.5 rounded-2 bg-white border shadow-2xs">
+                    <IconComponent size={14} className={`text-${pill.variant || 'primary'}`} />
+                    <span className="small text-muted" style={{ fontSize: '0.75rem' }}>
+                      {pill.label}:
+                    </span>
+                    <strong className="text-dark" style={{ fontSize: '0.8rem' }}>
+                      {pill.value}
+                    </strong>
+                  </div>
                 </div>
               );
             })}
