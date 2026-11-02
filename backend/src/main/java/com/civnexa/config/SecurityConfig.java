@@ -57,11 +57,17 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Public system health checks
                         .requestMatchers("/health", "/health/**", "/ping", "/api/v1/health", "/api/v1/health/**", "/api/v1/ping").permitAll()
-                        // Public authentication endpoints (login, register, email verification, resend verification)
+                        // Public authentication endpoints (login, register, email verification, resend verification, password reset)
                         .requestMatchers(
                                 "/auth/login", "/auth/register", "/auth/verify-email", "/auth/resend-verification",
+                                "/auth/forgot-password", "/auth/reset-password",
                                 "/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/verify-email", "/api/v1/auth/resend-verification",
-                                "/departments", "/api/v1/departments"
+                                "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password"
+                        ).permitAll()
+                        // Public department lookup (GET only)
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/departments", "/departments/{id}",
+                                "/api/v1/departments", "/api/v1/departments/{id}"
                         ).permitAll()
                         // OpenAPI / Swagger documentation
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()

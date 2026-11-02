@@ -54,8 +54,20 @@ public class CounselingService {
             throw new ApiException("Referral request cannot be null", HttpStatus.BAD_REQUEST);
         }
 
-        User student = userRepository.findById(request.getStudentId())
-                .orElseThrow(() -> new ApiException("Student not found with ID: " + request.getStudentId(), HttpStatus.BAD_REQUEST));
+        User student = null;
+        if (request.getStudentId() != null) {
+            student = userRepository.findById(request.getStudentId()).orElse(null);
+        }
+        if (student == null && request.getStudentRollOrEmail() != null && !request.getStudentRollOrEmail().isBlank()) {
+            String identifier = request.getStudentRollOrEmail().trim();
+            student = userRepository.findByRollNumber(identifier)
+                    .or(() -> userRepository.findByEmailIgnoreCase(identifier))
+                    .or(() -> userRepository.findByUserReference(identifier))
+                    .orElse(null);
+        }
+        if (student == null) {
+            throw new ApiException("Student profile could not be resolved. Please provide a valid student ID or institutional roll number.", HttpStatus.BAD_REQUEST);
+        }
 
         CaseRecord caseRecord = null;
         if (request.getCaseId() != null) {

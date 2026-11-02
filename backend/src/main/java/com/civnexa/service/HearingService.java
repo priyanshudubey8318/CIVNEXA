@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalTime;
 import java.time.Year;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -54,8 +55,20 @@ public class HearingService {
         CaseRecord caseRecord = caseRepository.findById(request.getCaseId())
                 .orElseThrow(() -> new ApiException("Case not found with ID: " + request.getCaseId(), HttpStatus.NOT_FOUND));
 
-        User presiding = userRepository.findById(request.getPresidingAuthorityId())
-                .orElseThrow(() -> new ApiException("Presiding authority user not found", HttpStatus.BAD_REQUEST));
+        User presiding = null;
+        if (request.getPresidingAuthorityId() != null) {
+            presiding = userRepository.findById(request.getPresidingAuthorityId()).orElse(null);
+        }
+        if (presiding == null) {
+            presiding = scheduler;
+        }
+        if (presiding == null) {
+            presiding = userRepository.findAll().stream().findFirst()
+                    .orElseThrow(() -> new ApiException("Presiding authority user not found", HttpStatus.BAD_REQUEST));
+        }
+
+        LocalTime startTime = request.getStartTime() != null ? request.getStartTime() : LocalTime.of(10, 0);
+        LocalTime endTime = request.getEndTime() != null ? request.getEndTime() : startTime.plusHours(1);
 
         String hearingNumber = generateUniqueHearingNumber();
 
@@ -65,8 +78,8 @@ public class HearingService {
         hearing.setScheduledBy(scheduler);
         hearing.setPresidingAuthority(presiding);
         hearing.setHearingDate(request.getHearingDate());
-        hearing.setStartTime(request.getStartTime());
-        hearing.setEndTime(request.getEndTime());
+        hearing.setStartTime(startTime);
+        hearing.setEndTime(endTime);
         hearing.setVenue(request.getVenue());
         hearing.setMode(request.getHearingMode());
         hearing.setStatus(HearingStatus.SCHEDULED);

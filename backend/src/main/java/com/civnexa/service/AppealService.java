@@ -49,8 +49,16 @@ public class AppealService {
             throw new ApiException("Appeal submission cannot be null", HttpStatus.BAD_REQUEST);
         }
 
-        CaseRecord caseRecord = caseRepository.findById(request.getCaseId())
-                .orElseThrow(() -> new ApiException("Case not found with ID: " + request.getCaseId(), HttpStatus.NOT_FOUND));
+        CaseRecord caseRecord = null;
+        if (request.getCaseId() != null) {
+            caseRecord = caseRepository.findById(request.getCaseId()).orElse(null);
+        }
+        if (caseRecord == null && request.getCaseNumber() != null && !request.getCaseNumber().isBlank()) {
+            caseRecord = caseRepository.findByCaseNumber(request.getCaseNumber().trim()).orElse(null);
+        }
+        if (caseRecord == null) {
+            throw new ApiException("Case record could not be found with provided identifier", HttpStatus.NOT_FOUND);
+        }
 
         String appealNumber = generateUniqueAppealNumber();
 

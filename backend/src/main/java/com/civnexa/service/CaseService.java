@@ -64,6 +64,16 @@ public class CaseService {
         Department dept = null;
         if (request.getDepartmentId() != null) {
             dept = departmentRepository.findById(request.getDepartmentId()).orElse(null);
+        } else if (request.getDepartmentName() != null && !request.getDepartmentName().isBlank()) {
+            String dName = request.getDepartmentName().trim();
+            dept = departmentRepository.findByNameIgnoreCase(dName)
+                    .or(() -> departmentRepository.findByCodeIgnoreCase(dName))
+                    .orElse(null);
+        } else if (request.getDepartmentCode() != null && !request.getDepartmentCode().isBlank()) {
+            String dCode = request.getDepartmentCode().trim();
+            dept = departmentRepository.findByCodeIgnoreCase(dCode)
+                    .or(() -> departmentRepository.findByNameIgnoreCase(dCode))
+                    .orElse(null);
         }
 
         User student = null;
@@ -71,7 +81,11 @@ public class CaseService {
             String idStr = request.getStudentRollOrEmail().trim();
             student = userRepository.findByEmailIgnoreCase(idStr)
                     .or(() -> userRepository.findByRollNumber(idStr))
+                    .or(() -> userRepository.findByUserReference(idStr))
                     .orElse(null);
+        }
+        if (student == null && reporter != null && reporter.getRole() != null && reporter.getRole().name().equals("STUDENT") && request.getCaseType() == CaseType.GRIEVANCE) {
+            student = reporter;
         }
 
         CaseRecord record = new CaseRecord();

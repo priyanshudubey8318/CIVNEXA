@@ -15,8 +15,8 @@ import java.util.List;
 public class CounselingDTO {
 
     public static class CreateReferralRequest {
-        @NotNull
         private Long studentId;
+        private String studentRollOrEmail;
         private Long caseId;
         private Long counselorId;
 
@@ -27,6 +27,8 @@ public class CounselingDTO {
 
         public Long getStudentId() { return studentId; }
         public void setStudentId(Long studentId) { this.studentId = studentId; }
+        public String getStudentRollOrEmail() { return studentRollOrEmail; }
+        public void setStudentRollOrEmail(String studentRollOrEmail) { this.studentRollOrEmail = studentRollOrEmail; }
         public Long getCaseId() { return caseId; }
         public void setCaseId(Long caseId) { this.caseId = caseId; }
         public Long getCounselorId() { return counselorId; }

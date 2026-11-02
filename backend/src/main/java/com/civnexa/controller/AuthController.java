@@ -3,9 +3,11 @@ package com.civnexa.controller;
 import com.civnexa.dto.ApiResponse;
 import com.civnexa.dto.AuthResponse;
 import com.civnexa.dto.ChangePasswordRequest;
+import com.civnexa.dto.ForgotPasswordRequest;
 import com.civnexa.dto.LoginRequest;
 import com.civnexa.dto.RegisterRequest;
 import com.civnexa.dto.ResendVerificationRequest;
+import com.civnexa.dto.ResetPasswordRequest;
 import com.civnexa.dto.UserResponse;
 import com.civnexa.dto.VerifyEmailRequest;
 import com.civnexa.entity.User;
@@ -194,6 +196,30 @@ public class AuthController {
 
         UserResponse userResponse = authService.changePassword(user.getId(), request);
         return ResponseEntity.ok(ApiResponse.ok(userResponse, "Password changed successfully"));
+    }
+
+    /**
+     * Initiates a password reset request by dispatching a 6-digit OTP code to the provided email.
+     *
+     * @param request The forgot password payload containing email
+     * @return Confirmation message
+     */
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ApiResponse<Void>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        authService.requestPasswordReset(request);
+        return ResponseEntity.ok(ApiResponse.ok(null, "If an institutional account exists with this email address, a password recovery code has been dispatched."));
+    }
+
+    /**
+     * Completes password reset using a verified 6-digit OTP code and sets the new password.
+     *
+     * @param request The reset password payload containing email, OTP, newPassword, confirmPassword
+     * @return UserResponse of updated user
+     */
+    @PostMapping("/reset-password")
+    public ResponseEntity<ApiResponse<UserResponse>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        UserResponse userResponse = authService.resetPassword(request);
+        return ResponseEntity.ok(ApiResponse.ok(userResponse, "Password has been reset successfully. You may now log in with your new password."));
     }
 
     public boolean isPublicRegistrationEnabled() {

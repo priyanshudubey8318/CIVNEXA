@@ -10,8 +10,8 @@ import java.time.Instant;
 public class AppealDTO {
 
     public static class SubmitRequest {
-        @NotNull
         private Long caseId;
+        private String caseNumber;
 
         @NotBlank
         private String grounds;
@@ -24,6 +24,8 @@ public class AppealDTO {
 
         public Long getCaseId() { return caseId; }
         public void setCaseId(Long caseId) { this.caseId = caseId; }
+        public String getCaseNumber() { return caseNumber; }
+        public void setCaseNumber(String caseNumber) { this.caseNumber = caseNumber; }
         public String getGrounds() { return grounds; }
         public void setGrounds(String grounds) { this.grounds = grounds; }
         public String getExplanation() { return explanation; }

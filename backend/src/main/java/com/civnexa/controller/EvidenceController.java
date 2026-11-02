@@ -39,7 +39,7 @@ public class EvidenceController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<EvidenceDTO.Response>>> getEvidenceByCase(
-            @RequestParam("caseId") Long caseId) {
+            @RequestParam(value = "caseId", required = false) Long caseId) {
         List<EvidenceDTO.Response> list = evidenceService.getEvidenceByCase(caseId);
         return ResponseEntity.ok(ApiResponse.ok(list, "Evidence list retrieved"));
     }

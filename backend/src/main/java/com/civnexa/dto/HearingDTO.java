@@ -17,16 +17,13 @@ public class HearingDTO {
         @NotNull
         private Long caseId;
 
-        @NotNull
         private Long presidingAuthorityId;
 
         @NotNull
         private LocalDate hearingDate;
 
-        @NotNull
         private LocalTime startTime;
 
-        @NotNull
         private LocalTime endTime;
 
         @NotBlank
@@ -34,6 +31,7 @@ public class HearingDTO {
 
         private HearingMode hearingMode = HearingMode.IN_PERSON;
         private String remarks;
+        private String instructions;
         private List<Long> committeeMemberIds;
 
         public Long getCaseId() { return caseId; }
@@ -42,6 +40,32 @@ public class HearingDTO {
         public void setPresidingAuthorityId(Long presidingAuthorityId) { this.presidingAuthorityId = presidingAuthorityId; }
         public LocalDate getHearingDate() { return hearingDate; }
         public void setHearingDate(LocalDate hearingDate) { this.hearingDate = hearingDate; }
+
+        @com.fasterxml.jackson.annotation.JsonSetter("hearingDate")
+        public void parseHearingDate(Object dateVal) {
+            if (dateVal == null) return;
+            if (dateVal instanceof LocalDate ld) {
+                this.hearingDate = ld;
+            } else {
+                String s = dateVal.toString().trim();
+                if (s.contains("T")) {
+                    String timePart = s.substring(s.indexOf('T') + 1);
+                    s = s.substring(0, s.indexOf('T'));
+                    try {
+                        if (timePart.length() >= 5) {
+                            this.startTime = LocalTime.parse(timePart.substring(0, 5));
+                            this.endTime = this.startTime.plusHours(1);
+                        }
+                    } catch (Exception ignored) {}
+                }
+                try {
+                    this.hearingDate = LocalDate.parse(s);
+                } catch (Exception ex) {
+                    this.hearingDate = LocalDate.now().plusDays(3);
+                }
+            }
+        }
+
         public LocalTime getStartTime() { return startTime; }
         public void setStartTime(LocalTime startTime) { this.startTime = startTime; }
         public LocalTime getEndTime() { return endTime; }
@@ -50,8 +74,16 @@ public class HearingDTO {
         public void setVenue(String venue) { this.venue = venue; }
         public HearingMode getHearingMode() { return hearingMode; }
         public void setHearingMode(HearingMode hearingMode) { this.hearingMode = hearingMode; }
-        public String getRemarks() { return remarks; }
+        public String getRemarks() {
+            if (remarks != null && !remarks.isBlank()) return remarks;
+            return instructions;
+        }
         public void setRemarks(String remarks) { this.remarks = remarks; }
+        public String getInstructions() { return instructions; }
+        public void setInstructions(String instructions) {
+            this.instructions = instructions;
+            if (this.remarks == null) this.remarks = instructions;
+        }
         public List<Long> getCommitteeMemberIds() { return committeeMemberIds; }
         public void setCommitteeMemberIds(List<Long> committeeMemberIds) { this.committeeMemberIds = committeeMemberIds; }
     }

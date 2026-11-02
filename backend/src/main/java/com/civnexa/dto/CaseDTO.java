@@ -36,6 +36,11 @@ public class CaseDTO {
         @NotBlank(message = "Summary is required")
         private String summary;
 
+        private String description;
+        private String studentInstitutionalId;
+        private String departmentName;
+        private String departmentCode;
+
         private boolean confidential;
         private boolean anonymous;
         private String concernedPerson;
@@ -53,15 +58,69 @@ public class CaseDTO {
         public Long getDepartmentId() { return departmentId; }
         public void setDepartmentId(Long departmentId) { this.departmentId = departmentId; }
         public String getStudentRollOrEmail() { return studentRollOrEmail; }
-        public void setStudentRollOrEmail(String studentRollOrEmail) { this.studentRollOrEmail = studentRollOrEmail; }
+        public void setStudentRollOrEmail(String studentRollOrEmail) {
+            this.studentRollOrEmail = studentRollOrEmail;
+            if (this.studentInstitutionalId == null) this.studentInstitutionalId = studentRollOrEmail;
+        }
+
+        public String getStudentInstitutionalId() { return studentInstitutionalId; }
+        public void setStudentInstitutionalId(String studentInstitutionalId) {
+            this.studentInstitutionalId = studentInstitutionalId;
+            if (this.studentRollOrEmail == null || this.studentRollOrEmail.isBlank()) {
+                this.studentRollOrEmail = studentInstitutionalId;
+            }
+        }
+
+        public String getDepartmentName() { return departmentName; }
+        public void setDepartmentName(String departmentName) { this.departmentName = departmentName; }
+
+        public String getDepartmentCode() { return departmentCode; }
+        public void setDepartmentCode(String departmentCode) { this.departmentCode = departmentCode; }
+
         public Instant getIncidentDate() { return incidentDate; }
         public void setIncidentDate(Instant incidentDate) { this.incidentDate = incidentDate; }
+
+        @com.fasterxml.jackson.annotation.JsonSetter("incidentDate")
+        public void parseIncidentDate(Object dateVal) {
+            if (dateVal == null) return;
+            if (dateVal instanceof Instant inst) {
+                this.incidentDate = inst;
+            } else {
+                String str = dateVal.toString().trim();
+                try {
+                    this.incidentDate = Instant.parse(str);
+                } catch (Exception e1) {
+                    try {
+                        this.incidentDate = java.time.LocalDate.parse(str).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+                    } catch (Exception e2) {
+                        this.incidentDate = Instant.now();
+                    }
+                }
+            }
+        }
+
         public String getIncidentTime() { return incidentTime; }
         public void setIncidentTime(String incidentTime) { this.incidentTime = incidentTime; }
         public String getLocation() { return location; }
         public void setLocation(String location) { this.location = location; }
-        public String getSummary() { return summary; }
-        public void setSummary(String summary) { this.summary = summary; }
+
+        public String getSummary() {
+            if (summary != null && !summary.isBlank()) return summary;
+            return description;
+        }
+
+        public void setSummary(String summary) {
+            this.summary = summary;
+            if (this.description == null) this.description = summary;
+        }
+
+        public String getDescription() { return description; }
+        public void setDescription(String description) {
+            this.description = description;
+            if (this.summary == null || this.summary.isBlank()) {
+                this.summary = description;
+            }
+        }
         public boolean isConfidential() { return confidential; }
         public void setConfidential(boolean confidential) { this.confidential = confidential; }
         public boolean isAnonymous() { return anonymous; }

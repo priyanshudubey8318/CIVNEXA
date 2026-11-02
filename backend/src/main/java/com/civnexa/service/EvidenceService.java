@@ -113,7 +113,13 @@ public class EvidenceService {
 
     @Transactional(readOnly = true)
     public List<EvidenceDTO.Response> getEvidenceByCase(Long caseId) {
-        return evidenceRepository.findByCaseRecordId(caseId)
+        if (caseId != null) {
+            return evidenceRepository.findByCaseRecordId(caseId)
+                    .stream()
+                    .map(EvidenceDTO.Response::fromEntity)
+                    .collect(Collectors.toList());
+        }
+        return evidenceRepository.findAll()
                 .stream()
                 .map(EvidenceDTO.Response::fromEntity)
                 .collect(Collectors.toList());

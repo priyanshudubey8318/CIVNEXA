@@ -2,9 +2,11 @@ package com.civnexa.service;
 
 import com.civnexa.dto.AccountDecisionRequest;
 import com.civnexa.dto.ChangePasswordRequest;
+import com.civnexa.dto.ForgotPasswordRequest;
 import com.civnexa.dto.LoginRequest;
 import com.civnexa.dto.RegisterRequest;
 import com.civnexa.dto.ResendVerificationRequest;
+import com.civnexa.dto.ResetPasswordRequest;
 import com.civnexa.dto.UserResponse;
 import com.civnexa.dto.VerifyEmailRequest;
 import com.civnexa.entity.Department;
@@ -670,6 +672,161 @@ public class AuthService {
 
         log.info("Password changed successfully for userRef={}", savedUser.getUserReference());
 
+        return UserResponse.fromEntity(savedUser);
+    }
+
+    /**
+     * Dispatches a 6-digit password recovery challenge to the user's verified email.
+     * Prevents account enumeration by providing a consistent response even if email is unlisted.
+     *
+     * @param request The forgot password payload
+     */
+    @Transactional
+    public void requestPasswordReset(ForgotPasswordRequest request) {
+        if (request == null || request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+            throw new ApiException("Email is required", HttpStatus.BAD_REQUEST);
+        }
+
+        String normalizedEmail = request.getEmail().trim().toLowerCase();
+        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(normalizedEmail);
+        if (userOpt.isEmpty()) {
+            log.info("Password reset requested for unlisted email={}", maskEmail(normalizedEmail));
+            return;
+        }
+
+        User user = userOpt.get();
+        if (STATUS_SUSPENDED.equalsIgnoreCase(user.getStatus()) || STATUS_INACTIVE.equalsIgnoreCase(user.getStatus())) {
+            throw new ApiException("Account is inactive or suspended. Please contact institutional administration.", HttpStatus.FORBIDDEN);
+        }
+
+        if (emailVerificationRepository != null) {
+            Optional<EmailVerification> latestOpt = emailVerificationRepository.findTopByEmailOrderByCreatedAtDescIdDesc(normalizedEmail);
+            if (latestOpt.isPresent()) {
+                EmailVerification latest = latestOpt.get();
+                if (Instant.now().isBefore(latest.getResendAvailableAt())) {
+                    long secondsLeft = Duration.between(Instant.now(), latest.getResendAvailableAt()).getSeconds() + 1;
+                    throw new ApiException("Please wait " + secondsLeft + " seconds before requesting a new password reset code",
+                            HttpStatus.TOO_MANY_REQUESTS);
+                }
+            }
+        }
+
+        String otp = generateOtp();
+        String otpHash = computeOtpHmac(otp, normalizedEmail);
+
+        Instant expiresAt = Instant.now().plus(10, ChronoUnit.MINUTES);
+        Instant resendAvailableAt = Instant.now().plus(60, ChronoUnit.SECONDS);
+
+        if (emailVerificationRepository != null) {
+            EmailVerification verification = new EmailVerification(normalizedEmail, otpHash, expiresAt, resendAvailableAt);
+            emailVerificationRepository.saveAndFlush(verification);
+        }
+
+        if (emailService != null) {
+            emailService.sendPasswordResetOtp(normalizedEmail, otp);
+        }
+
+        if (auditService != null) {
+            auditService.recordEvent("PASSWORD_RESET_REQUESTED", "USER", user.getUserReference(), user,
+                    "Password reset OTP challenge dispatched to verified email");
+        }
+
+        log.info("Password reset challenge dispatched to email={}", maskEmail(normalizedEmail));
+    }
+
+    /**
+     * Resets the user's password using the verified 6-digit OTP code.
+     *
+     * @param request Password reset payload containing email, OTP, newPassword, confirmPassword
+     * @return UserResponse of updated user
+     */
+    @Transactional
+    public UserResponse resetPassword(ResetPasswordRequest request) {
+        if (request == null) {
+            throw new ApiException("Reset request cannot be null", HttpStatus.BAD_REQUEST);
+        }
+        if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+            throw new ApiException("Email is required", HttpStatus.BAD_REQUEST);
+        }
+        if (request.getOtp() == null || !request.getOtp().trim().matches("^[0-9]{6}$")) {
+            throw new ApiException("Verification code must be exactly 6 numeric digits", HttpStatus.BAD_REQUEST);
+        }
+        if (request.getNewPassword() == null || request.getNewPassword().isEmpty()) {
+            throw new ApiException("New password is required", HttpStatus.BAD_REQUEST);
+        }
+        if (request.getConfirmPassword() == null || request.getConfirmPassword().isEmpty()) {
+            throw new ApiException("Password confirmation is required", HttpStatus.BAD_REQUEST);
+        }
+        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new ApiException("New password and confirmation password do not match", HttpStatus.BAD_REQUEST);
+        }
+
+        String normalizedEmail = request.getEmail().trim().toLowerCase();
+        User user = userRepository.findByEmailIgnoreCase(normalizedEmail)
+                .orElseThrow(() -> new ApiException("No account found with this email address", HttpStatus.NOT_FOUND));
+
+        if (STATUS_SUSPENDED.equalsIgnoreCase(user.getStatus()) || STATUS_INACTIVE.equalsIgnoreCase(user.getStatus())) {
+            throw new ApiException("Account is inactive or suspended. Please contact institutional administration.", HttpStatus.FORBIDDEN);
+        }
+
+        if (emailVerificationRepository == null) {
+            PasswordValidator.validate(request.getNewPassword());
+            user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+            user.setPasswordChangeRequired(false);
+            user = userRepository.saveAndFlush(user);
+            return UserResponse.fromEntity(user);
+        }
+
+        EmailVerification verification = emailVerificationRepository.findTopByEmailOrderByCreatedAtDescIdDesc(normalizedEmail)
+                .orElseThrow(() -> new ApiException("No active password reset request found for this email. Please request a new code.",
+                        HttpStatus.BAD_REQUEST));
+
+        if (verification.getVerifiedAt() != null) {
+            throw new ApiException("This password reset code has already been used", HttpStatus.CONFLICT);
+        }
+
+        if (Instant.now().isAfter(verification.getExpiresAt())) {
+            throw new ApiException("Password reset code has expired. Please request a new code.", HttpStatus.BAD_REQUEST);
+        }
+
+        if (verification.getAttempts() >= verification.getMaxAttempts()) {
+            throw new ApiException("Maximum verification attempts exceeded. Please request a new reset code.",
+                    HttpStatus.TOO_MANY_REQUESTS);
+        }
+
+        verification.setAttempts(verification.getAttempts() + 1);
+        emailVerificationRepository.saveAndFlush(verification);
+
+        String computedHash = computeOtpHmac(request.getOtp().trim(), normalizedEmail);
+        boolean matches = MessageDigest.isEqual(
+                computedHash.getBytes(StandardCharsets.UTF_8),
+                verification.getOtpHash().getBytes(StandardCharsets.UTF_8)
+        );
+
+        if (!matches) {
+            int remaining = verification.getMaxAttempts() - verification.getAttempts();
+            if (remaining <= 0) {
+                throw new ApiException("Invalid verification code. Maximum attempts reached. Please request a new code.",
+                        HttpStatus.BAD_REQUEST);
+            }
+            throw new ApiException("Invalid verification code. " + remaining + " attempts remaining.", HttpStatus.BAD_REQUEST);
+        }
+
+        PasswordValidator.validate(request.getNewPassword());
+
+        verification.setVerifiedAt(Instant.now());
+        emailVerificationRepository.saveAndFlush(verification);
+
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        user.setPasswordChangeRequired(false);
+        User savedUser = userRepository.saveAndFlush(user);
+
+        if (auditService != null) {
+            auditService.recordEvent("PASSWORD_RESET_COMPLETED", "USER", savedUser.getUserReference(), savedUser,
+                    "Password reset completed successfully via verified OTP challenge");
+        }
+
+        log.info("Password successfully reset for userRef={}, email={}", savedUser.getUserReference(), maskEmail(normalizedEmail));
         return UserResponse.fromEntity(savedUser);
     }
 

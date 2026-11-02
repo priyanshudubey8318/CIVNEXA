@@ -96,6 +96,33 @@ public class EmailService {
         }
     }
 
+    /**
+     * Sends a 6-digit OTP to the user for secure password recovery.
+     * Note: The OTP is NEVER logged to preserve verification secrecy.
+     */
+    public void sendPasswordResetOtp(String toEmail, String otp) {
+        if (!mailEnabled || mailSender == null) {
+            log.info("Email dispatch simulated (mailSender not configured or mail disabled): password reset challenge generated for email={}", maskEmail(toEmail));
+            return;
+        }
+
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(toEmail);
+            message.setSubject("CIVNEXA — Institutional Password Recovery Code");
+            message.setText("CIVNEXA Security Notice.\n\n" +
+                    "Your 6-digit password recovery code is: " + otp + "\n\n" +
+                    "This code will expire in 10 minutes. If you did not request a password reset, please contact the campus security administrator immediately.\n\n" +
+                    "— CIVNEXA Campus Safety & Conduct Administration");
+
+            mailSender.send(message);
+            log.info("Password reset challenge successfully dispatched to recipient={}", maskEmail(toEmail));
+        } catch (Exception e) {
+            log.warn("Failed to dispatch password reset email to recipient={}: {}", maskEmail(toEmail), e.getMessage());
+        }
+    }
+
     private String maskEmail(String email) {
         if (email == null || !email.contains("@")) return "***";
         int atIdx = email.indexOf('@');

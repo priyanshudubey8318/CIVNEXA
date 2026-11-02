@@ -3,6 +3,7 @@ package com.civnexa.controller;
 import com.civnexa.dto.LoginRequest;
 import com.civnexa.dto.RegisterRequest;
 import com.civnexa.entity.Department;
+import com.civnexa.entity.EmailVerification;
 import com.civnexa.entity.User;
 import com.civnexa.entity.enums.RoleType;
 import com.civnexa.repository.DepartmentRepository;
@@ -19,6 +20,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -57,6 +61,12 @@ public class AuthControllerTests {
 
     @Autowired
     private com.civnexa.security.LoginRateLimiter loginRateLimiter;
+
+    @Autowired
+    private com.civnexa.service.AuthService authService;
+
+    @Autowired
+    private com.civnexa.repository.EmailVerificationRepository emailVerificationRepository;
 
     private User activeStudent;
     private User pendingStudent;
@@ -488,5 +498,94 @@ public class AuthControllerTests {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success", is(false)))
                 .andExpect(jsonPath("$.message", containsString("already registered")));
+    }
+
+    @Test
+    @DisplayName("POST /auth/forgot-password dispatches OTP challenge for registered email and returns 200")
+    void testForgotPasswordSuccess() throws Exception {
+        String json = "{\"email\":\"" + activeStudent.getEmail() + "\"}";
+
+        mockMvc.perform(post("/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success", is(true)))
+                .andExpect(jsonPath("$.message", containsString("recovery code has been dispatched")));
+
+        EmailVerification verification = emailVerificationRepository
+                .findTopByEmailOrderByCreatedAtDesc(activeStudent.getEmail())
+                .orElseThrow();
+        assertFalse(verification.getOtpHash().isEmpty());
+    }
+
+    @Test
+    @DisplayName("POST /auth/forgot-password returns HTTP 400 Bad Request on invalid email format")
+    void testForgotPasswordInvalidEmailFormat() throws Exception {
+        String json = "{\"email\":\"not-a-valid-email\"}";
+
+        mockMvc.perform(post("/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success", is(false)));
+    }
+
+    @Test
+    @DisplayName("POST /auth/reset-password resets password with valid OTP and complexity-compliant password")
+    void testResetPasswordSuccess() throws Exception {
+        String email = activeStudent.getEmail();
+        String testOtp = "654321";
+        String testHash = authService.computeOtpHmac(testOtp, email);
+
+        EmailVerification verification = new EmailVerification(
+                email,
+                testHash,
+                Instant.now().plus(10, ChronoUnit.MINUTES),
+                Instant.now().plus(60, ChronoUnit.SECONDS)
+        );
+        emailVerificationRepository.saveAndFlush(verification);
+
+        String resetJson = "{\"email\":\"" + email + "\",\"otp\":\"" + testOtp + "\",\"newPassword\":\"N3wStrongP@ss2026\",\"confirmPassword\":\"N3wStrongP@ss2026\"}";
+
+        mockMvc.perform(post("/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(resetJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success", is(true)))
+                .andExpect(jsonPath("$.message", containsString("Password has been reset successfully")));
+
+        // Verify that the user can authenticate with the newly set password
+        String loginJson = "{\"email\":\"" + email + "\",\"password\":\"N3wStrongP@ss2026\"}";
+        mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success", is(true)))
+                .andExpect(jsonPath("$.data.accessToken", notNullValue()));
+    }
+
+    @Test
+    @DisplayName("POST /auth/reset-password returns HTTP 400 when password and confirmation mismatch")
+    void testResetPasswordMismatchReturns400() throws Exception {
+        String resetJson = "{\"email\":\"" + activeStudent.getEmail() + "\",\"otp\":\"123456\",\"newPassword\":\"N3wStrongP@ss2026\",\"confirmPassword\":\"DifferentP@ss2026\"}";
+
+        mockMvc.perform(post("/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(resetJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success", is(false)))
+                .andExpect(jsonPath("$.message", containsString("do not match")));
+    }
+
+    @Test
+    @DisplayName("POST /auth/reset-password returns HTTP 400 on weak password")
+    void testResetPasswordWeakReturns400() throws Exception {
+        String resetJson = "{\"email\":\"" + activeStudent.getEmail() + "\",\"otp\":\"123456\",\"newPassword\":\"weak\",\"confirmPassword\":\"weak\"}";
+
+        mockMvc.perform(post("/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(resetJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success", is(false)));
     }
 }
