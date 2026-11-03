@@ -223,7 +223,7 @@ export const LoginPage = () => {
           type="submit"
           disabled={isLoading}
           className="cx-btn cx-btn-primary w-100 py-2.5 d-flex align-items-center justify-content-center gap-2"
-          style={{ fontSize: '0.95rem' }}
+          style={{ fontSize: '0.95rem', minHeight: '44px' }}
         >
           {isLoading ? (
             <>
