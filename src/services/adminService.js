@@ -637,6 +637,30 @@ class AdminService {
   // 4. CATEGORY MANAGEMENT
   // ==========================================
 
+  async syncCategoriesWithBackend() {
+    if (!getAuthToken()) return this.getCategories();
+    try {
+      const resp = await apiClient.get('/categories?includeInactive=true');
+      const data = resp?.data || resp;
+      if (Array.isArray(data) && data.length > 0) {
+        const mapped = data.map((c) => ({
+          id: c.id,
+          key: c.categoryKey || c.key,
+          label: c.label,
+          description: c.description || '',
+          allowsAnonymous: Boolean(c.allowsAnonymous),
+          subcategories: Array.isArray(c.subcategories) ? c.subcategories : (c.subcategories ? c.subcategories.split(',').map((s) => s.trim()) : ['General']),
+          status: c.active !== false ? 'ACTIVE' : 'INACTIVE',
+        }));
+        localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(mapped));
+        return mapped;
+      }
+    } catch (e) {
+      console.warn('Could not sync categories from backend', e);
+    }
+    return this.getCategories();
+  }
+
   getCategories() {
     try {
       const stored = localStorage.getItem(CATEGORIES_STORAGE_KEY);
@@ -664,6 +688,22 @@ class AdminService {
       status: 'ACTIVE',
     };
 
+    if (getAuthToken()) {
+      apiClient.post('/categories', {
+        categoryKey: newCategory.key,
+        label: newCategory.label,
+        description: newCategory.description,
+        allowsAnonymous: newCategory.allowsAnonymous,
+        subcategories: newCategory.subcategories,
+      }).then((resp) => {
+        const saved = resp?.data || resp;
+        if (saved?.id) {
+          newCategory.id = saved.id;
+          localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(categories));
+        }
+      }).catch((e) => console.warn('Backend category creation notice', e));
+    }
+
     categories.push(newCategory);
     localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(categories));
 
@@ -676,6 +716,43 @@ class AdminService {
     });
 
     return newCategory;
+  }
+
+  updateCategory(catKey, updates) {
+    const categories = this.getCategories();
+    const idx = categories.findIndex((c) => c.key === catKey || c.id === catKey);
+    if (idx === -1) throw new Error('Category not found.');
+
+    const cat = categories[idx];
+
+    if (getAuthToken() && cat.id) {
+      apiClient.put(`/categories/${cat.id}`, {
+        label: updates.label || cat.label,
+        description: updates.description || cat.description,
+        allowsAnonymous: updates.allowsAnonymous !== undefined ? updates.allowsAnonymous : cat.allowsAnonymous,
+        subcategories: updates.subcategories || cat.subcategories,
+        active: updates.status ? updates.status === 'ACTIVE' : true,
+      }).catch((e) => console.warn('Backend category update notice', e));
+    }
+
+    categories[idx] = { ...cat, ...updates };
+    localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(categories));
+    return categories[idx];
+  }
+
+  deleteCategory(catKey) {
+    const categories = this.getCategories();
+    const cat = categories.find((c) => c.key === catKey || c.id === catKey);
+    if (!cat) throw new Error('Category not found.');
+
+    if (getAuthToken() && cat.id) {
+      apiClient.delete(`/categories/${cat.id}`)
+        .catch((e) => console.warn('Backend category delete notice', e));
+    }
+
+    const filtered = categories.filter((c) => c.key !== cat.key);
+    localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(filtered));
+    return true;
   }
 
   // ==========================================

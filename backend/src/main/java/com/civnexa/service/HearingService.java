@@ -59,6 +59,14 @@ public class HearingService {
         if (request.getPresidingAuthorityId() != null) {
             presiding = userRepository.findById(request.getPresidingAuthorityId()).orElse(null);
         }
+        if (presiding == null && request.getPresidingAuthorityEmail() != null && !request.getPresidingAuthorityEmail().isBlank()) {
+            presiding = userRepository.findByEmailIgnoreCase(request.getPresidingAuthorityEmail().trim()).orElse(null);
+        }
+        if (presiding == null && request.getPresidingAuthorityName() != null && !request.getPresidingAuthorityName().isBlank()) {
+            presiding = userRepository.findAll().stream()
+                    .filter(u -> u.getName() != null && u.getName().equalsIgnoreCase(request.getPresidingAuthorityName().trim()))
+                    .findFirst().orElse(null);
+        }
         if (presiding == null) {
             presiding = scheduler;
         }
@@ -67,8 +75,12 @@ public class HearingService {
                     .orElseThrow(() -> new ApiException("Presiding authority user not found", HttpStatus.BAD_REQUEST));
         }
 
+        java.time.LocalDate hearingDate = request.getHearingDate() != null ? request.getHearingDate() : java.time.LocalDate.now().plusDays(3);
         LocalTime startTime = request.getStartTime() != null ? request.getStartTime() : LocalTime.of(10, 0);
         LocalTime endTime = request.getEndTime() != null ? request.getEndTime() : startTime.plusHours(1);
+        String venue = (request.getVenue() != null && !request.getVenue().isBlank())
+                ? request.getVenue().trim()
+                : "Proctorial Board Committee Room 101";
 
         String hearingNumber = generateUniqueHearingNumber();
 
@@ -77,10 +89,10 @@ public class HearingService {
         hearing.setCaseRecord(caseRecord);
         hearing.setScheduledBy(scheduler);
         hearing.setPresidingAuthority(presiding);
-        hearing.setHearingDate(request.getHearingDate());
+        hearing.setHearingDate(hearingDate);
         hearing.setStartTime(startTime);
         hearing.setEndTime(endTime);
-        hearing.setVenue(request.getVenue());
+        hearing.setVenue(venue);
         hearing.setMode(request.getHearingMode());
         hearing.setStatus(HearingStatus.SCHEDULED);
         hearing.setRemarks(request.getRemarks());

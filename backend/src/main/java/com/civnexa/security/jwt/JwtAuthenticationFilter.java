@@ -36,10 +36,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider tokenProvider;
     private final UserRepository userRepository;
+    private final TokenBlacklistService tokenBlacklistService;
 
-    public JwtAuthenticationFilter(JwtTokenProvider tokenProvider, UserRepository userRepository) {
+    public JwtAuthenticationFilter(JwtTokenProvider tokenProvider,
+                                   UserRepository userRepository,
+                                   TokenBlacklistService tokenBlacklistService) {
         this.tokenProvider = tokenProvider;
         this.userRepository = userRepository;
+        this.tokenBlacklistService = tokenBlacklistService;
     }
 
     @Override
@@ -50,31 +54,36 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String jwt = extractJwtFromRequest(request);
 
             if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
-                String userReference = tokenProvider.getUserReferenceFromToken(jwt);
+                if (tokenBlacklistService != null && tokenBlacklistService.isRevoked(jwt)) {
+                    log.debug("JWT rejected: token is on the server-side revocation blacklist");
+                    SecurityContextHolder.clearContext();
+                } else {
+                    String userReference = tokenProvider.getUserReferenceFromToken(jwt);
 
-                if (StringUtils.hasText(userReference)) {
-                    // Authoritative DB verification: token is only valid if user exists and is ACTIVE
-                    Optional<User> userOpt = userRepository.findByUserReference(userReference);
+                    if (StringUtils.hasText(userReference)) {
+                        // Authoritative DB verification: token is only valid if user exists and is ACTIVE
+                        Optional<User> userOpt = userRepository.findByUserReference(userReference);
 
-                    if (userOpt.isPresent()) {
-                        User user = userOpt.get();
+                        if (userOpt.isPresent()) {
+                            User user = userOpt.get();
 
-                        if (AuthService.STATUS_ACTIVE.equalsIgnoreCase(user.getStatus())) {
-                            CivnexaUserPrincipal principal = CivnexaUserPrincipal.create(user);
-                            UsernamePasswordAuthenticationToken authentication =
-                                    new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
-                            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                            if (AuthService.STATUS_ACTIVE.equalsIgnoreCase(user.getStatus())) {
+                                CivnexaUserPrincipal principal = CivnexaUserPrincipal.create(user);
+                                UsernamePasswordAuthenticationToken authentication =
+                                        new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+                                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-                            SecurityContextHolder.getContext().setAuthentication(authentication);
-                            log.debug("Authenticated userRef={} with role={}", userReference, user.getRole());
+                                SecurityContextHolder.getContext().setAuthentication(authentication);
+                                log.debug("Authenticated userRef={} with role={}", userReference, user.getRole());
+                            } else {
+                                log.debug("JWT rejected: userRef={} exists but status is {} (not ACTIVE)",
+                                        userReference, user.getStatus());
+                                SecurityContextHolder.clearContext();
+                            }
                         } else {
-                            log.debug("JWT rejected: userRef={} exists but status is {} (not ACTIVE)",
-                                    userReference, user.getStatus());
+                            log.debug("JWT rejected: userRef={} from valid token not found in database", userReference);
                             SecurityContextHolder.clearContext();
                         }
-                    } else {
-                        log.debug("JWT rejected: userRef={} from valid token not found in database", userReference);
-                        SecurityContextHolder.clearContext();
                     }
                 }
             }

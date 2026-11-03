@@ -54,6 +54,15 @@ public class EvidenceService {
         CaseRecord caseRecord = caseRepository.findById(caseId)
                 .orElseThrow(() -> new ApiException("Case not found with ID: " + caseId, HttpStatus.NOT_FOUND));
 
+        // Strict role-based access control for students: students may only upload to their own cases
+        if (uploader != null && uploader.getRole() == com.civnexa.entity.enums.RoleType.STUDENT) {
+            boolean isStudent = caseRecord.getStudent() != null && caseRecord.getStudent().getId().equals(uploader.getId());
+            boolean isReporter = caseRecord.getReporter() != null && caseRecord.getReporter().getId().equals(uploader.getId());
+            if (!isStudent && !isReporter) {
+                throw new ApiException("Students may only upload evidence to cases where they are the subject student or reporter", HttpStatus.FORBIDDEN);
+            }
+        }
+
         String checksum;
         byte[] fileBytes;
         try {
@@ -112,17 +121,53 @@ public class EvidenceService {
     }
 
     @Transactional(readOnly = true)
-    public List<EvidenceDTO.Response> getEvidenceByCase(Long caseId) {
+    public List<EvidenceDTO.Response> getEvidenceByCase(Long caseId, User caller) {
         if (caseId != null) {
+            CaseRecord caseRecord = caseRepository.findById(caseId)
+                    .orElseThrow(() -> new ApiException("Case not found with ID: " + caseId, HttpStatus.NOT_FOUND));
+
+            if (caller != null && caller.getRole() == com.civnexa.entity.enums.RoleType.STUDENT) {
+                boolean isStudent = caseRecord.getStudent() != null && caseRecord.getStudent().getId().equals(caller.getId());
+                boolean isReporter = caseRecord.getReporter() != null && caseRecord.getReporter().getId().equals(caller.getId());
+                if (!isStudent && !isReporter) {
+                    throw new ApiException("Unauthorized access to evidence for case: " + caseRecord.getCaseNumber(), HttpStatus.FORBIDDEN);
+                }
+            }
+
             return evidenceRepository.findByCaseRecordId(caseId)
                     .stream()
+                    .filter(item -> {
+                        if (caller != null && caller.getRole() == com.civnexa.entity.enums.RoleType.STUDENT) {
+                            return !caseRecord.isConfidential();
+                        }
+                        return true;
+                    })
                     .map(EvidenceDTO.Response::fromEntity)
                     .collect(Collectors.toList());
         }
-        return evidenceRepository.findAll()
-                .stream()
+
+        List<EvidenceItem> allItems = evidenceRepository.findAll();
+        if (caller != null && caller.getRole() == com.civnexa.entity.enums.RoleType.STUDENT) {
+            return allItems.stream()
+                    .filter(item -> {
+                        CaseRecord c = item.getCaseRecord();
+                        if (c == null || c.isConfidential()) return false;
+                        boolean isStudent = c.getStudent() != null && c.getStudent().getId().equals(caller.getId());
+                        boolean isReporter = c.getReporter() != null && c.getReporter().getId().equals(caller.getId());
+                        return isStudent || isReporter;
+                    })
+                    .map(EvidenceDTO.Response::fromEntity)
+                    .collect(Collectors.toList());
+        }
+
+        return allItems.stream()
                 .map(EvidenceDTO.Response::fromEntity)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<EvidenceDTO.Response> getEvidenceByCase(Long caseId) {
+        return getEvidenceByCase(caseId, null);
     }
 
     @Transactional
@@ -152,11 +197,28 @@ public class EvidenceService {
     }
 
     @Transactional(readOnly = true)
-    public List<EvidenceDTO.CustodyLogItem> getCustodyLogs(Long evidenceId) {
+    public List<EvidenceDTO.CustodyLogItem> getCustodyLogs(Long evidenceId, User caller) {
+        EvidenceItem item = evidenceRepository.findById(evidenceId)
+                .orElseThrow(() -> new ApiException("Evidence item not found with ID: " + evidenceId, HttpStatus.NOT_FOUND));
+
+        if (caller != null && caller.getRole() == com.civnexa.entity.enums.RoleType.STUDENT) {
+            CaseRecord c = item.getCaseRecord();
+            boolean isStudent = c != null && c.getStudent() != null && c.getStudent().getId().equals(caller.getId());
+            boolean isReporter = c != null && c.getReporter() != null && c.getReporter().getId().equals(caller.getId());
+            if (!isStudent && !isReporter) {
+                throw new ApiException("Unauthorized access to chain of custody records", HttpStatus.FORBIDDEN);
+            }
+        }
+
         return custodyLogRepository.findByEvidenceItemIdOrderByTimestampAsc(evidenceId)
                 .stream()
                 .map(EvidenceDTO.CustodyLogItem::fromEntity)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<EvidenceDTO.CustodyLogItem> getCustodyLogs(Long evidenceId) {
+        return getCustodyLogs(evidenceId, null);
     }
 
     private String generateUniqueEvidenceReference() {

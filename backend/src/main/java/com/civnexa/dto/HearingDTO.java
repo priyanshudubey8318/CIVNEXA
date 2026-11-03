@@ -18,6 +18,8 @@ public class HearingDTO {
         private Long caseId;
 
         private Long presidingAuthorityId;
+        private String presidingAuthorityName;
+        private String presidingAuthorityEmail;
 
         @NotNull
         private LocalDate hearingDate;
@@ -38,6 +40,10 @@ public class HearingDTO {
         public void setCaseId(Long caseId) { this.caseId = caseId; }
         public Long getPresidingAuthorityId() { return presidingAuthorityId; }
         public void setPresidingAuthorityId(Long presidingAuthorityId) { this.presidingAuthorityId = presidingAuthorityId; }
+        public String getPresidingAuthorityName() { return presidingAuthorityName; }
+        public void setPresidingAuthorityName(String presidingAuthorityName) { this.presidingAuthorityName = presidingAuthorityName; }
+        public String getPresidingAuthorityEmail() { return presidingAuthorityEmail; }
+        public void setPresidingAuthorityEmail(String presidingAuthorityEmail) { this.presidingAuthorityEmail = presidingAuthorityEmail; }
         public LocalDate getHearingDate() { return hearingDate; }
         public void setHearingDate(LocalDate hearingDate) { this.hearingDate = hearingDate; }
 

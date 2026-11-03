@@ -35,7 +35,18 @@ export const CategoryManagementPage = () => {
   const [formAllowsAnonymous, setFormAllowsAnonymous] = useState(false);
   const [formSubcategories, setFormSubcategories] = useState('');
 
-  const loadCategories = () => {
+  const loadCategories = async () => {
+    if (adminService.syncCategoriesWithBackend) {
+      try {
+        const list = await adminService.syncCategoriesWithBackend();
+        if (Array.isArray(list) && list.length > 0) {
+          setCategories(list);
+          return;
+        }
+      } catch (e) {
+        // fallback
+      }
+    }
     const list = adminService.getCategories();
     setCategories(list);
   };

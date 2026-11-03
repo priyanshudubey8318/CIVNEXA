@@ -39,8 +39,10 @@ public class EvidenceController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<EvidenceDTO.Response>>> getEvidenceByCase(
-            @RequestParam(value = "caseId", required = false) Long caseId) {
-        List<EvidenceDTO.Response> list = evidenceService.getEvidenceByCase(caseId);
+            @RequestParam(value = "caseId", required = false) Long caseId,
+            @AuthenticationPrincipal CivnexaUserPrincipal principal) {
+        User caller = principal != null ? principal.getUser() : null;
+        List<EvidenceDTO.Response> list = evidenceService.getEvidenceByCase(caseId, caller);
         return ResponseEntity.ok(ApiResponse.ok(list, "Evidence list retrieved"));
     }
 
@@ -57,8 +59,10 @@ public class EvidenceController {
 
     @GetMapping("/{id}/custody-logs")
     public ResponseEntity<ApiResponse<List<EvidenceDTO.CustodyLogItem>>> getCustodyLogs(
-            @PathVariable Long id) {
-        List<EvidenceDTO.CustodyLogItem> logs = evidenceService.getCustodyLogs(id);
-        return ResponseEntity.ok(ApiResponse.ok(logs, "Chain of custody log retrieved"));
+            @PathVariable Long id,
+            @AuthenticationPrincipal CivnexaUserPrincipal principal) {
+        User caller = principal != null ? principal.getUser() : null;
+        List<EvidenceDTO.CustodyLogItem> list = evidenceService.getCustodyLogs(id, caller);
+        return ResponseEntity.ok(ApiResponse.ok(list, "Evidence chain of custody retrieved"));
     }
 }

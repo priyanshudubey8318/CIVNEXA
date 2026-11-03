@@ -46,6 +46,7 @@ public class AuthController {
     private final JwtTokenProvider jwtTokenProvider;
     private final UserRepository userRepository;
     private final LoginRateLimiter loginRateLimiter;
+    private final com.civnexa.security.jwt.TokenBlacklistService tokenBlacklistService;
 
     @Value("${civnexa.auth.public-registration-enabled:true}")
     private boolean publicRegistrationEnabled;
@@ -53,11 +54,28 @@ public class AuthController {
     public AuthController(AuthService authService,
                           JwtTokenProvider jwtTokenProvider,
                           UserRepository userRepository,
-                          LoginRateLimiter loginRateLimiter) {
+                          LoginRateLimiter loginRateLimiter,
+                          com.civnexa.security.jwt.TokenBlacklistService tokenBlacklistService) {
         this.authService = authService;
         this.jwtTokenProvider = jwtTokenProvider;
         this.userRepository = userRepository;
         this.loginRateLimiter = loginRateLimiter;
+        this.tokenBlacklistService = tokenBlacklistService;
+    }
+
+    /**
+     * Terminates session and places the bearer JWT onto the server-side revocation blacklist.
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7).trim();
+            if (tokenBlacklistService != null) {
+                tokenBlacklistService.revokeToken(token);
+            }
+        }
+        return ResponseEntity.ok(ApiResponse.ok(null, "Logged out successfully. Institutional session revoked."));
     }
 
     /**
