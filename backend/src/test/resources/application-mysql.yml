@@ -1,0 +1,51 @@
+server:
+  port: 0
+  servlet:
+    context-path: /api/v1
+
+spring:
+  application:
+    name: civnexa-mysql-test
+
+  datasource:
+    url: ${MYSQL_TEST_URL:jdbc:mysql://localhost:3306/civnexa_test?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${MYSQL_TEST_USERNAME:${SPRING_DATASOURCE_USERNAME:root}}
+    password: ${MYSQL_TEST_PASSWORD:${SPRING_DATASOURCE_PASSWORD:}}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      pool-name: CivnexaMySqlTestPool
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 10000
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+civnexa:
+  jwt:
+    secret: civnexa_mysql_isolated_secret_key_at_least_256_bits_long_for_test_environment_2026
+    expiration-ms: 900000
+    issuer: CIVNEXA
+  auth:
+    public-registration-enabled: true
+  otp:
+    hmac-secret: civnexa_mysql_isolated_otp_hmac_secret_key_at_least_256_bits_for_testing
+  bootstrap:
+    admin:
+      enabled: false
+  ai:
+    provider: LOCAL
+    api-key: ""
+  mail:
+    enabled: false
