@@ -6,6 +6,8 @@ import com.civnexa.entity.User;
 import com.civnexa.security.CivnexaUserPrincipal;
 import com.civnexa.service.EvidenceService;
 import jakarta.validation.Valid;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -64,5 +66,31 @@ public class EvidenceController {
         User caller = principal != null ? principal.getUser() : null;
         List<EvidenceDTO.CustodyLogItem> list = evidenceService.getCustodyLogs(id, caller);
         return ResponseEntity.ok(ApiResponse.ok(list, "Evidence chain of custody retrieved"));
+    }
+
+    @GetMapping("/{id}/download")
+    public ResponseEntity<Resource> downloadEvidence(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CivnexaUserPrincipal principal) {
+        User caller = principal != null ? principal.getUser() : null;
+        EvidenceDTO.DownloadResponse download = evidenceService.downloadEvidence(id, caller);
+
+        String contentType = download.getContentType();
+        MediaType mediaType;
+        try {
+            mediaType = MediaType.parseMediaType(contentType);
+        } catch (Exception e) {
+            mediaType = MediaType.APPLICATION_OCTET_STREAM;
+        }
+
+        String safeFileName = download.getFileName().replace("\"", "").replace("\r", "").replace("\n", "");
+
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .contentLength(download.getFileSizeBytes())
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + safeFileName + "\"")
+                .header("X-Evidence-Checksum", download.getSha256Checksum())
+                .header("X-Evidence-Reference", download.getEvidenceReference())
+                .body(download.getResource());
     }
 }

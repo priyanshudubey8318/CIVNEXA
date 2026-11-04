@@ -15,6 +15,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,6 +37,12 @@ public class MySqlConstraintsAndRollbackIntegrationTests {
     private CategoryRepository categoryRepository;
 
     @Autowired
+    private RevokedTokenRepository revokedTokenRepository;
+
+    @Autowired
+    private com.civnexa.security.jwt.TokenBlacklistService tokenBlacklistService;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
@@ -49,6 +56,7 @@ public class MySqlConstraintsAndRollbackIntegrationTests {
         jdbcTemplate.execute("DELETE FROM civnexa_test.users WHERE email LIKE '%@mysql-test.edu'");
         jdbcTemplate.execute("DELETE FROM civnexa_test.departments WHERE code LIKE 'TEST_MYSQL_%'");
         jdbcTemplate.execute("DELETE FROM civnexa_test.case_categories WHERE category_key LIKE 'TEST_MYSQL_%'");
+        jdbcTemplate.execute("DELETE FROM civnexa_test.revoked_tokens WHERE token_id LIKE 'MYSQL-TEST-%'");
     }
 
     @Test
@@ -162,5 +170,26 @@ public class MySqlConstraintsAndRollbackIntegrationTests {
         );
 
         assertThat(count).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("Verify scheduled revoked token cleanup in real MySQL")
+    void testRevokedTokenCleanupInMySql() {
+        String expiredJti = "MYSQL-TEST-EXP-" + UUID.randomUUID().toString().substring(0, 8);
+        String activeJti = "MYSQL-TEST-ACT-" + UUID.randomUUID().toString().substring(0, 8);
+
+        RevokedToken expired = new RevokedToken(expiredJti, "REF-EXP-USER", Instant.now().minusSeconds(1200));
+        RevokedToken active = new RevokedToken(activeJti, "REF-ACT-USER", Instant.now().plusSeconds(1200));
+
+        revokedTokenRepository.saveAndFlush(expired);
+        revokedTokenRepository.saveAndFlush(active);
+
+        assertThat(revokedTokenRepository.existsByTokenId(expiredJti)).isTrue();
+        assertThat(revokedTokenRepository.existsByTokenId(activeJti)).isTrue();
+
+        tokenBlacklistService.cleanupExpiredTokens();
+
+        assertThat(revokedTokenRepository.existsByTokenId(expiredJti)).isFalse();
+        assertThat(revokedTokenRepository.existsByTokenId(activeJti)).isTrue();
     }
 }

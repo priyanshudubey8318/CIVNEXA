@@ -4,6 +4,7 @@ import com.civnexa.entity.RevokedToken;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
@@ -12,7 +13,8 @@ import java.time.Instant;
 public interface RevokedTokenRepository extends JpaRepository<RevokedToken, Long> {
     boolean existsByTokenId(String tokenId);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM RevokedToken r WHERE r.expiresAt < :now")
-    void deleteExpiredTokens(Instant now);
+    int deleteExpiredTokens(@Param("now") Instant now);
 }
+

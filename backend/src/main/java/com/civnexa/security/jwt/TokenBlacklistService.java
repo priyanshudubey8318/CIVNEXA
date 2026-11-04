@@ -91,7 +91,8 @@ public class TokenBlacklistService {
         Instant now = Instant.now();
         inMemoryBlacklist.entrySet().removeIf(entry -> now.isAfter(entry.getValue()));
         try {
-            revokedTokenRepository.deleteExpiredTokens(now);
+            int deleted = revokedTokenRepository.deleteExpiredTokens(now);
+            log.info("Expired token cleanup executed at {}: {} expired token records purged from database", now, deleted);
         } catch (Exception ex) {
             log.warn("Automatic expired token purge notice: {}", ex.getMessage());
         }

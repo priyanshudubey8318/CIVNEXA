@@ -42,9 +42,15 @@ spring:
     properties:
       mail:
         smtp:
-          auth: false
+          auth: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:false}
           starttls:
-            enable: false
+            enable: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:false}
+            required: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_REQUIRED:false}
+          ssl:
+            trust: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST:*}
+          connectiontimeout: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_CONNECTIONTIMEOUT:5000}
+          timeout: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_TIMEOUT:5000}
+          writetimeout: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_WRITETIMEOUT:5000}
 
 civnexa:
   jwt:
@@ -75,6 +81,9 @@ civnexa:
         enabled: ${LOGIN_RATE_LIMIT_ENABLED:true}
         max-attempts: ${LOGIN_RATE_LIMIT_MAX_ATTEMPTS:5}
         window-seconds: ${LOGIN_RATE_LIMIT_WINDOW_SECONDS:60}
+  storage:
+    location: ${CIVNEXA_STORAGE_PATH:vault_storage}
+    max-file-size: ${CIVNEXA_STORAGE_MAX_FILE_SIZE:26214400}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:3000}
     allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS

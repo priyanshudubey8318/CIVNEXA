@@ -74,12 +74,31 @@ public class ProcessEnvReader {
 
 Add-Type -TypeDefinition $code -Language CSharp
 
-$pass = [ProcessEnvReader]::GetEnvVar(21120, "SPRING_DATASOURCE_PASSWORD")
-$user = [ProcessEnvReader]::GetEnvVar(21120, "SPRING_DATASOURCE_USERNAME")
+$pass = $env:MYSQL_TEST_PASSWORD
+if (-not $pass) { $pass = $env:SPRING_DATASOURCE_PASSWORD }
+
+$user = $env:MYSQL_TEST_USERNAME
+if (-not $user) { $user = $env:SPRING_DATASOURCE_USERNAME }
 if (-not $user) { $user = "root" }
 
 if (-not $pass) {
-    Write-Error "Failed to obtain MySQL credentials from active session."
+    # Attempt to locate active Java process dynamically
+    $javaProc = Get-Process -Name java -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($javaProc) {
+        $pass = [ProcessEnvReader]::GetEnvVar($javaProc.Id, "SPRING_DATASOURCE_PASSWORD")
+        $pUser = [ProcessEnvReader]::GetEnvVar($javaProc.Id, "SPRING_DATASOURCE_USERNAME")
+        if ($pUser) { $user = $pUser }
+    }
+}
+
+if (-not $pass) {
+    Write-Host "[!] No active Spring Boot session detected." -ForegroundColor Yellow
+    $securePass = Read-Host "Enter MySQL root password for isolated test execution (or press Enter if configured via env)" -AsSecureString
+    $pass = [System.Net.NetworkCredential]::new("", $securePass).Password
+}
+
+if (-not $pass) {
+    Write-Error "Failed to obtain MySQL credentials for isolated test execution."
     exit 1
 }
 

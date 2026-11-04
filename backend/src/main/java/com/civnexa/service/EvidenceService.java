@@ -15,10 +15,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.civnexa.storage.EvidenceStorageService;
+import org.springframework.core.io.Resource;
+
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.Year;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
@@ -32,17 +38,20 @@ public class EvidenceService {
     private final CaseRecordRepository caseRepository;
     private final CaseActivityRepository activityRepository;
     private final AuditService auditService;
+    private final EvidenceStorageService evidenceStorageService;
 
     public EvidenceService(EvidenceItemRepository evidenceRepository,
                            EvidenceCustodyLogRepository custodyLogRepository,
                            CaseRecordRepository caseRepository,
                            CaseActivityRepository activityRepository,
-                           AuditService auditService) {
+                           AuditService auditService,
+                           EvidenceStorageService evidenceStorageService) {
         this.evidenceRepository = evidenceRepository;
         this.custodyLogRepository = custodyLogRepository;
         this.caseRepository = caseRepository;
         this.activityRepository = activityRepository;
         this.auditService = auditService;
+        this.evidenceStorageService = evidenceStorageService;
     }
 
     @Transactional
@@ -75,49 +84,136 @@ public class EvidenceService {
         String evidenceRef = generateUniqueEvidenceReference();
         String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "evidence_file";
         String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
-        String storageRef = "vault/" + caseRecord.getCaseNumber() + "/" + checksum.substring(0, 12) + "_" + originalFilename;
+        String safeExt = extractSafeExtension(originalFilename);
+        String storageRef = "vault/" + caseRecord.getCaseNumber() + "/" + checksum.substring(0, 16) + "_" + UUID.randomUUID().toString().substring(0, 8) + safeExt;
 
-        EvidenceItem item = new EvidenceItem();
-        item.setEvidenceReference(evidenceRef);
-        item.setCaseRecord(caseRecord);
-        item.setUploader(uploader);
-        item.setFileName(originalFilename);
-        item.setFileType(contentType);
-        item.setFileSizeBytes((long) fileBytes.length);
-        item.setSha256Checksum(checksum);
-        item.setStorageReference(storageRef);
-        item.setReviewStatus(ReviewStatus.PENDING);
-        item.setUploadedAt(Instant.now());
+        boolean storedInStorage = false;
+        try {
+            evidenceStorageService.store(storageRef, new ByteArrayInputStream(fileBytes), fileBytes.length, contentType);
+            storedInStorage = true;
 
-        EvidenceItem saved = evidenceRepository.saveAndFlush(item);
+            EvidenceItem item = new EvidenceItem();
+            item.setEvidenceReference(evidenceRef);
+            item.setCaseRecord(caseRecord);
+            item.setUploader(uploader);
+            item.setFileName(originalFilename);
+            item.setFileType(contentType);
+            item.setFileSizeBytes((long) fileBytes.length);
+            item.setSha256Checksum(checksum);
+            item.setStorageReference(storageRef);
+            item.setReviewStatus(ReviewStatus.PENDING);
+            item.setUploadedAt(Instant.now());
 
-        // Chain of custody log entry
+            EvidenceItem saved = evidenceRepository.saveAndFlush(item);
+
+            // Chain of custody log entry
+            EvidenceCustodyLog custodyLog = new EvidenceCustodyLog(
+                    saved,
+                    uploader,
+                    "INITIAL_UPLOAD",
+                    "Uploaded with cryptographic SHA-256 verification: " + checksum
+            );
+            custodyLogRepository.save(custodyLog);
+
+            // Append Case activity
+            CaseActivity activity = new CaseActivity(
+                    caseRecord,
+                    "EVIDENCE_SUBMITTED",
+                    uploader,
+                    uploader != null ? uploader.getName() : "ANONYMOUS",
+                    uploader != null && uploader.getRole() != null ? uploader.getRole().name() : "UPLOADER",
+                    "Evidence vaulted under reference " + evidenceRef + " (" + originalFilename + ")"
+            );
+            activityRepository.save(activity);
+
+            if (auditService != null) {
+                auditService.recordEvent("EVIDENCE_UPLOADED", "EVIDENCE", evidenceRef, uploader,
+                        "Cryptographic evidence item secured for case " + caseRecord.getCaseNumber());
+            }
+
+            log.info("Secured evidence {} for case {}", evidenceRef, caseRecord.getCaseNumber());
+            return EvidenceDTO.Response.fromEntity(saved);
+        } catch (Exception e) {
+            if (storedInStorage) {
+                evidenceStorageService.delete(storageRef);
+            }
+            if (e instanceof ApiException) throw (ApiException) e;
+            throw new ApiException("Failed to vault evidence: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Transactional
+    public EvidenceDTO.DownloadResponse downloadEvidence(Long evidenceId, User caller) {
+        EvidenceItem item = evidenceRepository.findById(evidenceId)
+                .orElseThrow(() -> new ApiException("Evidence item not found with ID: " + evidenceId, HttpStatus.NOT_FOUND));
+
+        CaseRecord caseRecord = item.getCaseRecord();
+        if (caseRecord == null) {
+            throw new ApiException("Evidence item is not associated with any case record", HttpStatus.NOT_FOUND);
+        }
+
+        // Strict role-based and case-level access control
+        if (caller != null && caller.getRole() == com.civnexa.entity.enums.RoleType.STUDENT) {
+            boolean isStudent = caseRecord.getStudent() != null && caseRecord.getStudent().getId().equals(caller.getId());
+            boolean isReporter = caseRecord.getReporter() != null && caseRecord.getReporter().getId().equals(caller.getId());
+            if (!isStudent && !isReporter) {
+                throw new ApiException("Students may only download evidence from cases where they are the subject student or reporter", HttpStatus.FORBIDDEN);
+            }
+            if (caseRecord.isConfidential()) {
+                throw new ApiException("Confidential evidence cannot be downloaded by students", HttpStatus.FORBIDDEN);
+            }
+        }
+
+        if (!evidenceStorageService.exists(item.getStorageReference())) {
+            throw new ApiException("Evidence binary file is not available in vault storage", HttpStatus.NOT_FOUND);
+        }
+
+        Resource resource = evidenceStorageService.retrieve(item.getStorageReference());
+
+        // Verify SHA-256 integrity on download
+        try (InputStream is = resource.getInputStream()) {
+            byte[] bytes = is.readAllBytes();
+            String downloadChecksum = calculateSha256(bytes);
+            if (!downloadChecksum.equalsIgnoreCase(item.getSha256Checksum())) {
+                log.error("Tampering detected on evidence {}: expected={}, actual={}", item.getEvidenceReference(), item.getSha256Checksum(), downloadChecksum);
+                throw new ApiException("Cryptographic integrity violation: evidence checksum mismatch", HttpStatus.INTERNAL_SERVER_ERROR);
+            }
+        } catch (ApiException ae) {
+            throw ae;
+        } catch (Exception ex) {
+            throw new ApiException("Failed to verify evidence binary integrity: " + ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+
+        // Record Chain of Custody log entry for download
         EvidenceCustodyLog custodyLog = new EvidenceCustodyLog(
-                saved,
-                uploader,
-                "INITIAL_UPLOAD",
-                "Uploaded with cryptographic SHA-256 verification: " + checksum
+                item,
+                caller,
+                "DOWNLOAD",
+                "Evidence retrieved with verified SHA-256 integrity: " + item.getSha256Checksum()
         );
         custodyLogRepository.save(custodyLog);
 
-        // Append Case activity
-        CaseActivity activity = new CaseActivity(
-                caseRecord,
-                "EVIDENCE_SUBMITTED",
-                uploader,
-                uploader != null ? uploader.getName() : "ANONYMOUS",
-                uploader != null && uploader.getRole() != null ? uploader.getRole().name() : "UPLOADER",
-                "Evidence vaulted under reference " + evidenceRef + " (" + originalFilename + ")"
-        );
-        activityRepository.save(activity);
-
         if (auditService != null) {
-            auditService.recordEvent("EVIDENCE_UPLOADED", "EVIDENCE", evidenceRef, uploader,
-                    "Cryptographic evidence item secured for case " + caseRecord.getCaseNumber());
+            auditService.recordEvent("EVIDENCE_DOWNLOADED", "EVIDENCE", item.getEvidenceReference(), caller,
+                    "Cryptographic evidence retrieved for case " + caseRecord.getCaseNumber());
         }
 
-        log.info("Secured evidence {} for case {}", evidenceRef, caseRecord.getCaseNumber());
-        return EvidenceDTO.Response.fromEntity(saved);
+        log.info("Evidence {} downloaded by user {}", item.getEvidenceReference(), caller != null ? caller.getEmail() : "ANONYMOUS");
+        return new EvidenceDTO.DownloadResponse(
+                resource,
+                item.getFileName(),
+                item.getFileType(),
+                item.getFileSizeBytes(),
+                item.getSha256Checksum(),
+                item.getEvidenceReference()
+        );
+    }
+
+    private String extractSafeExtension(String filename) {
+        if (filename == null || !filename.contains(".")) return ".dat";
+        int lastDot = filename.lastIndexOf('.');
+        String ext = filename.substring(lastDot).toLowerCase().replaceAll("[^a-z0-9]", "");
+        return ext.isEmpty() ? ".dat" : "." + ext;
     }
 
     @Transactional(readOnly = true)

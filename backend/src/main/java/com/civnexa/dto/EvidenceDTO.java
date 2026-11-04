@@ -9,6 +9,31 @@ import java.time.Instant;
 
 public class EvidenceDTO {
 
+    public static class DownloadResponse {
+        private final org.springframework.core.io.Resource resource;
+        private final String fileName;
+        private final String contentType;
+        private final long fileSizeBytes;
+        private final String sha256Checksum;
+        private final String evidenceReference;
+
+        public DownloadResponse(org.springframework.core.io.Resource resource, String fileName, String contentType, long fileSizeBytes, String sha256Checksum, String evidenceReference) {
+            this.resource = resource;
+            this.fileName = fileName;
+            this.contentType = contentType;
+            this.fileSizeBytes = fileSizeBytes;
+            this.sha256Checksum = sha256Checksum;
+            this.evidenceReference = evidenceReference;
+        }
+
+        public org.springframework.core.io.Resource getResource() { return resource; }
+        public String getFileName() { return fileName; }
+        public String getContentType() { return contentType; }
+        public long getFileSizeBytes() { return fileSizeBytes; }
+        public String getSha256Checksum() { return sha256Checksum; }
+        public String getEvidenceReference() { return evidenceReference; }
+    }
+
     public static class ReviewRequest {
         @NotNull
         private ReviewStatus reviewStatus;

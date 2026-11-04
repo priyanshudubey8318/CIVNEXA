@@ -45,3 +45,7 @@ dist-ssr
 # Playwright test artifacts
 playwright-report/
 test-results/
+
+# Persistent Evidence Storage
+/vault_storage/
+backend/vault_storage/

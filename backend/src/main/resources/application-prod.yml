@@ -1,0 +1,87 @@
+# ==============================================================================
+# CIVNEXA - Production Environment Configuration Profile (prod)
+# Strictly enforces explicit runtime injection of all cryptographic secrets,
+# database credentials, and institutional SMTP configurations.
+# ==============================================================================
+
+server:
+  port: ${PORT:8080}
+  servlet:
+    context-path: /api/v1
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
+
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      pool-name: CivnexaProdHikariCP
+      maximum-pool-size: ${HIKARI_MAX_POOL_SIZE:25}
+      minimum-idle: ${HIKARI_MIN_IDLE:5}
+      idle-timeout: 30000
+      connection-timeout: 20000
+      max-lifetime: 1800000
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+
+  mail:
+    host: ${SPRING_MAIL_HOST}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:true}
+            required: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_REQUIRED:true}
+          ssl:
+            trust: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST:*}
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
+
+civnexa:
+  jwt:
+    secret: ${JWT_SECRET}
+    expiration-ms: ${JWT_EXPIRATION_MS:900000}
+    issuer: ${JWT_ISSUER:CIVNEXA}
+  otp:
+    hmac-secret: ${CIVNEXA_OTP_HMAC_SECRET}
+  auth:
+    public-registration-enabled: ${PUBLIC_REGISTRATION_ENABLED:false}
+  bootstrap:
+    admin:
+      enabled: false
+  mail:
+    enabled: ${CIVNEXA_MAIL_ENABLED:true}
+    from: ${CIVNEXA_MAIL_FROM:no-reply@civnexa.edu}
+  storage:
+    location: ${CIVNEXA_STORAGE_PATH:vault_storage}
+    max-file-size: ${CIVNEXA_STORAGE_MAX_FILE_SIZE:26214400}
+  security:
+    rate-limit:
+      login:
+        enabled: true
+        max-attempts: 5
+        window-seconds: 60
